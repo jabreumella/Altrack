@@ -29,14 +29,16 @@
   --sab:env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
+html,body{height:100%;width:100%;max-width:100%;overflow-x:hidden}
 body{
   font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;
   background:var(--menta);
   color:var(--bosque);
   font-size:16px;
   -webkit-font-smoothing:antialiased;
-  overscroll-behavior-y:none;
+  overscroll-behavior:none;              /* sin rebote vertical ni lateral */
+  touch-action:pan-y;                    /* el gesto horizontal no arrastra la página */
+  position:relative;
 }
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:16px}
 input,select,textarea{
@@ -64,8 +66,9 @@ header.app .sub{font-size:11px;opacity:.65;font-weight:400}
 main{
   padding:calc(var(--sat) + 72px) 14px calc(var(--sab) + 90px);
   max-width:640px;margin:0 auto;
+  width:100%;overflow-x:hidden;
 }
-.view{display:none}
+.view{display:none;min-width:0}
 .view.active{display:block;animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
@@ -86,11 +89,13 @@ nav.tabbar button .ic{font-size:21px;line-height:1}
 nav.tabbar button.active{color:var(--verde)}
 
 /* ============ Componentes ============ */
-.card{background:var(--blanco);border-radius:var(--radio);box-shadow:var(--sombra);padding:16px;margin-bottom:12px}
+.card{background:var(--blanco);border-radius:var(--radio);box-shadow:var(--sombra);padding:16px;margin-bottom:12px;min-width:0;overflow-wrap:anywhere}
 .card h3{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 .hero-card{text-align:left}
-.hero{font-size:42px;font-weight:700;line-height:1.1;color:var(--bosque)}
-.hero .cur{font-size:22px;opacity:.55;font-weight:600;margin-right:2px}
+/* La cifra héroe se adapta al ancho del iPhone: nunca empuja la página hacia los lados */
+.hero{font-size:clamp(28px,10.5vw,42px);font-weight:700;line-height:1.1;color:var(--bosque);white-space:nowrap}
+.hero.larga{font-size:clamp(22px,8vw,34px)}
+.hero .cur{font-size:.52em;opacity:.55;font-weight:600;margin-right:2px}
 .hero-note{font-size:12px;color:var(--gris);margin-top:6px}
 .delta-pos{color:var(--verde);font-weight:600}
 .delta-neg{color:var(--rojo);font-weight:600}
@@ -204,12 +209,58 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
 .pdf-hero .lbl{font-size:11px;color:var(--gris);font-weight:700;text-transform:uppercase}
 .pdf-hero .val{font-size:20px;font-weight:700;margin-top:4px}
 .pdf-foot{font-size:9.5px;color:var(--gris);margin-top:26px;border-top:1px solid #e4efe7;padding-top:10px;line-height:1.5}
-#informe-preview .pdf-page{width:100%;padding:20px;border-radius:var(--radio);box-shadow:var(--sombra);margin-bottom:12px}
+#informe-preview{max-width:100%;overflow:hidden}
+#informe-preview .pdf-page{width:100%;padding:20px;border-radius:var(--radio);box-shadow:var(--sombra);margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 #informe-preview .pdf-hero{flex-wrap:wrap}
 #informe-preview .pdf-hero > div{min-width:44%}
+#informe-preview table{min-width:540px}
+
+/* ============ Splash de arranque ============ */
+#splash{
+  position:fixed;inset:0;z-index:200;background:var(--bosque);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  transition:opacity .45s ease, visibility .45s ease;
+}
+#splash.oculto{opacity:0;visibility:hidden}
+#splash .marca{width:132px;height:132px}
+#splash .aro{
+  fill:none;stroke:var(--verde);stroke-width:4;stroke-linecap:round;
+  stroke-dasharray:308;stroke-dashoffset:308;
+  animation:trazo 1s cubic-bezier(.5,0,.2,1) forwards;
+}
+#splash .al{
+  fill:var(--verde);opacity:0;
+  animation:aparece .5s ease .55s forwards;
+}
+#splash .nombre{
+  color:var(--blanco);font-size:19px;font-weight:700;letter-spacing:.6px;
+  opacity:0;animation:aparece .5s ease .8s forwards;
+}
+#splash .lema{
+  color:var(--verde);font-size:12px;letter-spacing:2.4px;text-transform:uppercase;
+  opacity:0;animation:aparece .5s ease .95s forwards;margin-top:-12px;
+}
+@keyframes trazo{to{stroke-dashoffset:0}}
+@keyframes aparece{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  #splash .aro{stroke-dashoffset:0}
+  #splash .al,#splash .nombre,#splash .lema{opacity:1}
+}
 </style>
 </head>
 <body>
+
+<!-- Pantalla de arranque: se oculta sola cuando la app termina de montar -->
+<div id="splash" role="status" aria-label="Cargando Abreu Lantigua">
+  <svg class="marca" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle class="aro" cx="60" cy="60" r="49"></circle>
+    <text class="al" x="60" y="60" text-anchor="middle" dominant-baseline="central"
+          font-family="-apple-system,'SF Pro Display',system-ui,sans-serif"
+          font-size="40" font-weight="700" letter-spacing="1">AL</text>
+  </svg>
+  <div class="nombre">Abreu Lantigua</div>
+  <div class="lema">Patrimonio</div>
+</div>
 
 <header class="app">
   <div>
@@ -229,6 +280,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       <h3>Patrimonio total</h3>
       <div class="hero num" id="hero-total"></div>
       <div class="hero-note" id="hero-delta"></div>
+      <div class="hero-note tiny">Valor a hoy: capital más el rendimiento devengado a la fecha, no el de vencimiento.</div>
       <div class="hero-note tiny" id="hero-nota-estimados">Incluye valores de mercado estimados por el usuario.</div>
       <div class="chips">
         <span class="chip num" id="chip-dop"></span>
@@ -237,17 +289,11 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       <div class="tiny num" id="hero-tc" style="margin-top:8px"></div>
     </div>
 
-    <div class="grid2">
-      <div class="card">
-        <h3>Financiero</h3>
-        <div class="num" style="font-size:20px;font-weight:700" id="res-fin-valor"></div>
-        <div class="small num" id="res-fin-rend"></div>
-      </div>
-      <div class="card">
-        <h3>Inmobiliario <span class="tiny">(equity)</span></h3>
-        <div class="num" style="font-size:20px;font-weight:700" id="res-inm-valor"></div>
-        <div class="small num" id="res-inm-rend"></div>
-      </div>
+    <div class="card">
+      <h3>Portafolio de inversión</h3>
+      <div class="num" style="font-size:24px;font-weight:700" id="res-fin-valor"></div>
+      <div class="small num" id="res-fin-rend"></div>
+      <div class="small num" id="res-inm-rend" style="margin-top:6px"></div>
     </div>
 
     <button class="card" style="width:100%;text-align:left" id="card-flujo">
@@ -308,8 +354,8 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       <div class="kv"><span class="k">Tasa prom. ponderada USD</span><span class="v num" id="m-tasa-usd"></span></div>
       <div class="kv"><span class="k">Plazo prom. ponderado</span><span class="v num" id="m-plazo"></span></div>
       <div class="kv"><span class="k">Próximo vencimiento</span><span class="v num" id="m-venc"></span></div>
-      <div class="kv"><span class="k">Cap rate prom. ponderado</span><span class="v num" id="m-cap"></span></div>
-      <div class="kv"><span class="k">Cash-on-cash prom. ponderado</span><span class="v num" id="m-coc"></span></div>
+      <div class="kv" id="m-row-cap"><span class="k">Cap rate prom. ponderado</span><span class="v num" id="m-cap"></span></div>
+      <div class="kv" id="m-row-coc"><span class="k">Cash-on-cash prom. ponderado</span><span class="v num" id="m-coc"></span></div>
       <div class="kv"><span class="k">Flujo de caja anual</span><span class="v num" id="m-flujo-anual"></span></div>
       <div class="kv"><span class="k">Valor proyectado a 12 meses</span><span class="v num" id="m-proy12"></span></div>
     </div>
@@ -319,8 +365,8 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
   <section class="view" id="view-portafolio">
     <div class="seg" id="seg-titular">
       <button data-t="Todos" class="active">Todos</button>
-      <button data-t="Jochy">Jochy</button>
-      <button data-t="Esposa">Esposa</button>
+      <button data-t="Juan José">Juan José</button>
+      <button data-t="Massi">Massi</button>
       <button data-t="Conjunto">Conjunto</button>
     </div>
     <div class="seg" id="seg-agrupar">
@@ -353,9 +399,9 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         <label>Institución</label><input id="c-institucion" placeholder="Banco Popular">
         <div class="fila2">
           <div><label>Moneda</label><select id="c-moneda"><option>DOP</option><option>USD</option></select></div>
-          <div><label>Titular</label><select id="c-titular"><option>Jochy</option><option>Esposa</option><option>Conjunto</option></select></div>
+          <div><label>Titular</label><select id="c-titular"><option>Juan José</option><option>Massi</option><option>Conjunto</option></select></div>
         </div>
-        <label>Capital</label><input id="c-capital" inputmode="decimal" placeholder="500000">
+        <label>Capital</label><input id="c-capital" inputmode="decimal" data-miles placeholder="500000">
         <label>Tasa nominal anual (%)</label><input id="c-tasa" inputmode="decimal" placeholder="10.50">
         <label>Modalidad de interés</label>
         <select id="c-modalidad">
@@ -385,12 +431,12 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         <label>Institución (AFI / SAFI)</label><input id="f-institucion" placeholder="AFI Universal">
         <div class="fila2">
           <div><label>Moneda</label><select id="f-moneda"><option>DOP</option><option>USD</option></select></div>
-          <div><label>Titular</label><select id="f-titular"><option>Jochy</option><option>Esposa</option><option>Conjunto</option></select></div>
+          <div><label>Titular</label><select id="f-titular"><option>Juan José</option><option>Massi</option><option>Conjunto</option></select></div>
         </div>
         <legend>Aporte inicial</legend>
         <div class="fila2">
           <div><label>Fecha</label><input id="f-ap-fecha" type="date"></div>
-          <div><label>Monto</label><input id="f-ap-monto" inputmode="decimal" placeholder="2000"></div>
+          <div><label>Monto</label><input id="f-ap-monto" inputmode="decimal" data-miles placeholder="2000"></div>
         </div>
         <label>Cuotas recibidas</label><input id="f-ap-cuotas" inputmode="decimal" placeholder="18.4512">
         <label>Valor de cuota en esa fecha</label><input id="f-vc" inputmode="decimal" placeholder="108.4012">
@@ -410,15 +456,15 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         <label>Ubicación</label><input id="i-ubicacion" placeholder="Naco, Santo Domingo">
         <div class="fila2">
           <div><label>Moneda</label><select id="i-moneda"><option>DOP</option><option>USD</option></select></div>
-          <div><label>Titular</label><select id="i-titular"><option>Jochy</option><option>Esposa</option><option>Conjunto</option></select></div>
+          <div><label>Titular</label><select id="i-titular"><option>Juan José</option><option>Massi</option><option>Conjunto</option></select></div>
         </div>
         <div class="fila2">
-          <div><label>Costo de adquisición</label><input id="i-costo" inputmode="decimal"></div>
-          <div><label>Gastos de cierre</label><input id="i-cierre" inputmode="decimal" placeholder="0"></div>
+          <div><label>Costo de adquisición</label><input id="i-costo" inputmode="decimal" data-miles></div>
+          <div><label>Gastos de cierre</label><input id="i-cierre" inputmode="decimal" data-miles placeholder="0"></div>
         </div>
         <label>Fecha de adquisición</label><input id="i-fecha-adq" type="date">
         <div class="fila2">
-          <div><label>Valor de mercado estimado</label><input id="i-vm" inputmode="decimal"></div>
+          <div><label>Valor de mercado estimado</label><input id="i-vm" inputmode="decimal" data-miles></div>
           <div><label>Fecha del estimado</label><input id="i-vm-fecha" type="date"></div>
         </div>
         <label>Apreciación anual estimada (%)</label><input id="i-apr" inputmode="decimal" placeholder="5.00">
@@ -432,7 +478,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       <fieldset id="i-bloque-renta">
         <legend>Renta</legend>
         <div class="fila2">
-          <div><label>Renta mensual</label><input id="i-renta" inputmode="decimal"></div>
+          <div><label>Renta mensual</label><input id="i-renta" inputmode="decimal" data-miles></div>
           <div><label>Día de cobro</label><input id="i-dia-cobro" inputmode="numeric" placeholder="5"></div>
         </div>
         <label>Inquilino</label><input id="i-inquilino">
@@ -446,17 +492,17 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       <fieldset>
         <legend>Gastos mensuales</legend>
         <div class="fila2">
-          <div><label>Mantenimiento</label><input id="i-g-mant" inputmode="decimal" placeholder="0"></div>
-          <div><label>Administración</label><input id="i-g-adm" inputmode="decimal" placeholder="0"></div>
+          <div><label>Mantenimiento</label><input id="i-g-mant" inputmode="decimal" data-miles placeholder="0"></div>
+          <div><label>Administración</label><input id="i-g-adm" inputmode="decimal" data-miles placeholder="0"></div>
         </div>
         <div class="fila2">
-          <div><label>Seguro</label><input id="i-g-seg" inputmode="decimal" placeholder="0"></div>
-          <div><label>Otros</label><input id="i-g-otros" inputmode="decimal" placeholder="0"></div>
+          <div><label>Seguro</label><input id="i-g-seg" inputmode="decimal" data-miles placeholder="0"></div>
+          <div><label>Otros</label><input id="i-g-otros" inputmode="decimal" data-miles placeholder="0"></div>
         </div>
         <legend>Gastos anuales</legend>
         <div class="fila2">
-          <div><label>IPI</label><input id="i-ipi" inputmode="decimal" placeholder="0"></div>
-          <div><label>Reparaciones estimadas</label><input id="i-rep" inputmode="decimal" placeholder="0"></div>
+          <div><label>IPI</label><input id="i-ipi" inputmode="decimal" data-miles placeholder="0"></div>
+          <div><label>Reparaciones estimadas</label><input id="i-rep" inputmode="decimal" data-miles placeholder="0"></div>
         </div>
       </fieldset>
       <fieldset>
@@ -464,15 +510,15 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         <div id="i-bloque-hip" style="display:none">
           <label>Institución</label><input id="i-hip-inst">
           <div class="fila2">
-            <div><label>Saldo actual</label><input id="i-hip-saldo" inputmode="decimal"></div>
+            <div><label>Saldo actual</label><input id="i-hip-saldo" inputmode="decimal" data-miles></div>
             <div><label>Fecha del saldo</label><input id="i-hip-fecha" type="date"></div>
           </div>
           <div class="fila2">
-            <div><label>Cuota mensual</label><input id="i-hip-cuota" inputmode="decimal"></div>
+            <div><label>Cuota mensual</label><input id="i-hip-cuota" inputmode="decimal" data-miles></div>
             <div><label>Tasa anual (%)</label><input id="i-hip-tasa" inputmode="decimal"></div>
           </div>
           <label>Monto original del préstamo <span class="tiny">(opcional — mejora el cash-on-cash)</span></label>
-          <input id="i-hip-orig" inputmode="decimal">
+          <input id="i-hip-orig" inputmode="decimal" data-miles>
         </div>
       </fieldset>
       <fieldset>
@@ -551,6 +597,49 @@ const Fmt = {
   fechaCorta(iso){
     const d = Fecha.parse(iso);
     return d.toLocaleDateString('es-DO', { month: 'short', year: '2-digit' });
+  },
+  /* Convierte lo que el usuario escribió ("1,250,000.50") a número. */
+  parse(txt){
+    if (txt === null || txt === undefined) return NaN;
+    const limpio = String(txt).replace(/[^\d.-]/g, '');
+    if (limpio === '' || limpio === '-' || limpio === '.') return NaN;
+    return parseFloat(limpio);
+  },
+  /* Agrupa en miles conservando lo que el usuario va escribiendo después del punto. */
+  agrupar(txt){
+    let s = String(txt).replace(/[^\d.]/g, '');
+    const p = s.split('.');
+    let ent = p[0].replace(/^0+(?=\d)/, '');
+    const dec = p.length > 1 ? '.' + p.slice(1).join('').slice(0, 2) : '';
+    if (ent === '') return dec ? '0' + dec : '';
+    ent = ent.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return ent + dec;
+  }
+};
+
+/* ============ Miles: separador de miles en vivo dentro de los inputs ============ */
+const Miles = {
+  /* Se aplica a todo input con data-miles. El caret se mantiene contando
+     desde la derecha, que es lo estable cuando se insertan comas. */
+  activar(raiz){
+    (raiz || document).querySelectorAll('input[data-miles]').forEach(inp => {
+      if (inp.dataset.milesOn) return;
+      inp.dataset.milesOn = '1';
+      inp.addEventListener('input', () => {
+        const antesLargo = inp.value.length;
+        const desdeDerecha = antesLargo - (inp.selectionStart || antesLargo);
+        inp.value = Fmt.agrupar(inp.value);
+        const pos = Math.max(0, inp.value.length - desdeDerecha);
+        try { inp.setSelectionRange(pos, pos); } catch(e){}
+      });
+      inp.addEventListener('blur', () => { inp.value = Fmt.agrupar(inp.value); });
+    });
+  },
+  /* Escribe un número en un input respetando el formato con comas. */
+  set(id, v){
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    inp.value = (v === null || v === undefined || v === '' || isNaN(v)) ? '' : Fmt.agrupar(String(v));
   }
 };
 
@@ -588,7 +677,13 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 1,
+  version: 3,
+  meta: {
+    actualizadoEn: new Date().toISOString(),
+    dispositivoOrigen: null,   // se asigna en Store.load la primera vez
+    publicadoEn: null,
+    modoConsulta: false
+  },
   config: {
     monedaBase: 'DOP',
     tasaCambio: 63.50,
@@ -602,7 +697,7 @@ const DEFAULT_DATA = () => ({
     aplicarIsrAlquiler: true,
     ultimoExport: null
   },
-  titulares: ['Jochy', 'Esposa', 'Conjunto'],
+  titulares: ['Juan José', 'Massi', 'Conjunto'],
   instrumentos: [],
   inmuebles: [],
   snapshots: []
@@ -626,20 +721,47 @@ const Store = {
     } else {
       this.data = DEFAULT_DATA();
     }
+    if (!this.data.meta.dispositivoOrigen) this.data.meta.dispositivoOrigen = this.uuid();
     return this.data;
   },
+
+  /* Migraciones encadenadas. Nunca rompen datos existentes.
+     v1 → v2: agrega el bloque meta.
+     v2 → v3: renombra los titulares (Jochy → Juan José, Esposa → Massi). */
   migrar(d){
-    // Las migraciones futuras incrementan version aquí, nunca rompen datos.
     const base = DEFAULT_DATA();
     d.config = Object.assign(base.config, d.config || {});
     d.instrumentos = d.instrumentos || [];
     d.inmuebles = d.inmuebles || [];
     d.snapshots = d.snapshots || [];
-    d.titulares = d.titulares || base.titulares;
     d.version = d.version || 1;
+
+    if (d.version < 2) {
+      d.meta = {
+        actualizadoEn: new Date().toISOString(),
+        dispositivoOrigen: this.uuid(),
+        publicadoEn: null,
+        modoConsulta: false
+      };
+      d.version = 2;
+    }
+    d.meta = Object.assign({}, base.meta, d.meta || {});
+
+    if (d.version < 3) {
+      const mapa = { 'Jochy': 'Juan José', 'Esposa': 'Massi' };
+      const ren = x => { if (x && mapa[x.titular]) x.titular = mapa[x.titular]; };
+      d.instrumentos.forEach(ren);
+      d.inmuebles.forEach(ren);
+      d.titulares = base.titulares.slice();
+      d.version = 3;
+    }
+    d.titulares = d.titulares || base.titulares.slice();
     return d;
   },
+
+  /* Único punto de escritura: aquí y solo aquí se sella meta.actualizadoEn. */
   save(){
+    this.data.meta.actualizadoEn = new Date().toISOString();
     if (this.memOnly) return;
     try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch(e){}
   },
@@ -1002,6 +1124,7 @@ const UI = {
     UI.segmento('seg-agrupar', 'g', v => { UI.agrupar = v; UI.renderPortafolio(); });
     // Formularios
     Forms.init();
+    Miles.activar();
     $('hdr-fecha').textContent = new Date().toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long' });
     $('btn-compartir').addEventListener('click', () => Informe.compartir());
     UI.renderTodo();
@@ -1057,13 +1180,14 @@ const UI = {
       if (f.tipo === 'fondo_mutuo' && Calc.fondo(f).lecturaVieja && (f.historialValorCuota||[]).length)
         avisos.push(`&#128200; Valor de cuota de <b>${f.nombre}</b> desactualizado — última lectura del ${Fmt.fecha(Calc.fondo(f).ultimaLectura.fecha)}.`);
     }
-    if (cfg.ultimoExport === null || Fecha.dias(cfg.ultimoExport, Fecha.hoy()) > 30)
-      avisos.push('&#128190; Han pasado más de 30 días sin respaldo. Exporta el JSON desde Ajustes.');
+    // El recordatorio de respaldo vive solo en Ajustes (spec §6.5), no en el home.
     $('avisos').innerHTML = avisos.map(a => `<div class="alert">${a}</div>`).join('');
 
     // Héroe
     const totalMostrar = cfg.incluirInmueblesEnTotal ? t.totalBase : t.finBase;
-    $('hero-total').innerHTML = `<span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(totalMostrar)}`;
+    const txtTotal = Fmt.num(totalMostrar);
+    $('hero-total').innerHTML = `<span class="cur">${Fmt.simbolo(base)}</span>${txtTotal}`;
+    $('hero-total').classList.toggle('larga', txtTotal.length > 12); // p. ej. 12,345,678.00
     $('hero-nota-estimados').style.display = cfg.incluirInmueblesEnTotal && Store.data.inmuebles.length ? 'block' : 'none';
 
     // Variación del mes vs snapshot más cercano al inicio del mes
@@ -1081,15 +1205,17 @@ const UI = {
     $('chip-usd').textContent = `USD ${Fmt.money(t.finUSD + (cfg.incluirInmueblesEnTotal ? Store.data.inmuebles.filter(i=>i.moneda==='USD').reduce((s,i)=>s+Calc.inmueble(i).equity,0) : 0), 'USD')}`;
     $('hero-tc').textContent = `Tasa de cambio: ${Fmt.num(cfg.tasaCambio)} DOP/USD (${Fmt.fecha(cfg.tasaCambioFecha)}) — edición manual`;
 
-    // Tarjetas financiero / inmobiliario
+    // Tarjeta de portafolio de inversión (el equity inmobiliario vive en Portafolio, no aquí)
+    const hayInm = Store.data.inmuebles.length > 0;
     $('res-fin-valor').textContent = Fmt.money(t.finBase, base);
     $('res-fin-rend').innerHTML = t.capitalAportado > 0
-      ? `<span class="${t.rendNeto>=0?'delta-pos':'delta-neg'}">${t.rendNeto>=0?'+':''}${Fmt.money(cfg.aplicarRetencion?t.rendNeto:t.rendBruto, base)} (${Fmt.pct((cfg.aplicarRetencion?t.rendNeto:t.rendBruto)/t.capitalAportado)})</span>`
-      : '<span class="tiny">Sin instrumentos</span>';
-    $('res-inm-valor').textContent = Fmt.money(t.inmEquityBase, base);
-    $('res-inm-rend').innerHTML = Store.data.inmuebles.length
-      ? `<span class="tiny">Flujo neto anual: </span><span class="num">${Fmt.money(t.inmFlujoAnual, base)}</span>`
-      : '<span class="tiny">Sin inmuebles</span>';
+      ? `<span class="${t.rendNeto>=0?'delta-pos':'delta-neg'}">${t.rendNeto>=0?'+':''}${Fmt.money(cfg.aplicarRetencion?t.rendNeto:t.rendBruto, base)} (${Fmt.pct((cfg.aplicarRetencion?t.rendNeto:t.rendBruto)/t.capitalAportado)})</span> <span class="tiny">sobre ${Fmt.money(t.capitalAportado, base)} aportados</span>`
+      : '<span class="tiny">Aún no hay instrumentos registrados</span>';
+    $('res-inm-rend').innerHTML = hayInm
+      ? `<span class="tiny">Inmuebles — equity </span><span class="num">${Fmt.money(t.inmEquityBase, base)}</span><span class="tiny"> · flujo neto anual </span><span class="num">${Fmt.money(t.inmFlujoAnual, base)}</span>`
+      : '';
+    $('m-row-cap').style.display = hayInm ? '' : 'none';
+    $('m-row-coc').style.display = hayInm ? '' : 'none';
 
     // Flujo mensual
     $('flujo-total').textContent = Fmt.money(t.flujoMensual, base) + ' /mes';
@@ -1356,7 +1482,7 @@ const UI = {
 const Ajustes = {
   guardar(){
     const c = Store.data.config;
-    const nuevaTasa = parseFloat($('aj-tc').value);
+    const nuevaTasa = Fmt.parse($('aj-tc').value);
     if (!isNaN(nuevaTasa) && nuevaTasa > 0 && (nuevaTasa !== c.tasaCambio || $('aj-tc-fecha').value !== c.tasaCambioFecha)) {
       c.tasaCambio = nuevaTasa;
       c.tasaCambioFecha = $('aj-tc-fecha').value || Fecha.hoy();
@@ -1367,9 +1493,9 @@ const Ajustes = {
     c.monedaBase = $('aj-base').value;
     c.baseDias = parseInt($('aj-dias').value, 10);
     c.aplicarRetencion = $('aj-ret-on').checked;
-    const ret = parseFloat($('aj-ret').value); if (!isNaN(ret) && ret >= 0 && ret <= 100) c.retencionISR = ret / 100;
+    const ret = Fmt.parse($('aj-ret').value); if (!isNaN(ret) && ret >= 0 && ret <= 100) c.retencionISR = ret / 100;
     c.aplicarIsrAlquiler = $('aj-isr-on').checked;
-    const isr = parseFloat($('aj-isr').value); if (!isNaN(isr) && isr >= 0 && isr <= 100) c.isrAlquilerEfectivo = isr / 100;
+    const isr = Fmt.parse($('aj-isr').value); if (!isNaN(isr) && isr >= 0 && isr <= 100) c.isrAlquilerEfectivo = isr / 100;
     c.incluirInmueblesEnTotal = $('aj-inm-on').checked;
     Store.save();
     UI.cerrarSheet();
@@ -1504,7 +1630,7 @@ const Ficha = {
 
   actualizarCuota(id){
     const i = Store.data.instrumentos.find(x => x.id === id); if (!i) return;
-    const valor = parseFloat(prompt('Nuevo valor de cuota:'));
+    const valor = Fmt.parse(prompt('Nuevo valor de cuota:'));
     if (isNaN(valor) || valor <= 0) return;
     let fecha = prompt('Fecha de la lectura (AAAA-MM-DD):', Fecha.hoy());
     if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = Fecha.hoy();
@@ -1520,9 +1646,9 @@ const Ficha = {
 
   agregarAporte(id){
     const i = Store.data.instrumentos.find(x => x.id === id); if (!i) return;
-    const monto = parseFloat(prompt('Monto del aporte:'));
+    const monto = Fmt.parse(prompt('Monto del aporte:'));
     if (isNaN(monto) || monto <= 0) return;
-    const cuotas = parseFloat(prompt('Cuotas recibidas:'));
+    const cuotas = Fmt.parse(prompt('Cuotas recibidas:'));
     if (isNaN(cuotas) || cuotas <= 0) return;
     let fecha = prompt('Fecha del aporte (AAAA-MM-DD):', Fecha.hoy());
     if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = Fecha.hoy();
@@ -1598,7 +1724,7 @@ const Ficha = {
   registrarRenta(id){
     const im = Store.data.inmuebles.find(x => x.id === id); if (!im) return;
     const sugerido = (im.renta && im.renta.montoMensual) ? im.renta.montoMensual : 0;
-    const monto = parseFloat(prompt('Monto cobrado:', sugerido));
+    const monto = Fmt.parse(prompt('Monto cobrado:', sugerido));
     if (isNaN(monto) || monto < 0) return;
     let fecha = prompt('Fecha del cobro (AAAA-MM-DD):', Fecha.hoy());
     if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = Fecha.hoy();
@@ -1637,7 +1763,7 @@ const Forms = {
   },
 
   autoCuotas(){
-    const m = parseFloat($('f-ap-monto').value), vc = parseFloat($('f-vc').value);
+    const m = Fmt.parse($('f-ap-monto').value), vc = Fmt.parse($('f-vc').value);
     if (!isNaN(m) && !isNaN(vc) && vc > 0 && !$('f-ap-cuotas').value) $('f-ap-cuotas').placeholder = Fmt.num(m/vc, 4);
   },
 
@@ -1648,7 +1774,7 @@ const Forms = {
     else $(Forms.tipoFin === 'certificado' ? 'form-certificado' : 'form-fondo').classList.add('active');
   },
 
-  num(id){ const v = parseFloat($(id).value); return isNaN(v) ? null : v; },
+  num(id){ const v = Fmt.parse($(id).value); return isNaN(v) ? null : v; },
 
   previewCert(){
     const cap = Forms.num('c-capital'), tasa = Forms.num('c-tasa');
@@ -1848,7 +1974,7 @@ const Forms = {
       Forms.claseActiva = 'financiero'; Forms.tipoFin = 'certificado'; Forms.mostrarForm();
       $('c-nombre').value = i.nombre; $('c-institucion').value = i.institucion;
       $('c-moneda').value = i.moneda; $('c-titular').value = i.titular;
-      $('c-capital').value = i.capital; $('c-tasa').value = (i.tasaNominalAnual*100).toFixed(2);
+      Miles.set('c-capital', i.capital); $('c-tasa').value = (i.tasaNominalAnual*100).toFixed(2);
       $('c-modalidad').value = i.modalidad;
       $('c-inicio').value = i.fechaInicio; $('c-venc').value = i.fechaVencimiento;
       $('c-renov').checked = !!i.renovacionAutomatica; $('c-notas').value = i.notas || '';
@@ -1873,28 +1999,28 @@ const Forms = {
     $('agregar-titulo').textContent = 'Editar: ' + im.nombre;
     $('i-nombre').value = im.nombre; $('i-ubicacion').value = im.ubicacion || '';
     $('i-moneda').value = im.moneda; $('i-titular').value = im.titular;
-    $('i-costo').value = im.costoAdquisicion; $('i-cierre').value = im.gastosCierre || '';
+    Miles.set('i-costo', im.costoAdquisicion); Miles.set('i-cierre', im.gastosCierre || '');
     $('i-fecha-adq').value = im.fechaAdquisicion || '';
-    $('i-vm').value = im.valorMercadoEstimado; $('i-vm-fecha').value = im.valorMercadoFecha || '';
+    Miles.set('i-vm', im.valorMercadoEstimado); $('i-vm-fecha').value = im.valorMercadoFecha || '';
     $('i-apr').value = ((im.apreciacionAnualEstimada||0)*100).toFixed(2);
     $('i-estado').value = im.estado;
     $('i-bloque-renta').style.display = im.estado === 'rentado' ? 'block' : 'none';
     const r = im.renta || {};
-    $('i-renta').value = r.montoMensual || ''; $('i-dia-cobro').value = r.diaCobro || '';
+    Miles.set('i-renta', r.montoMensual || ''); $('i-dia-cobro').value = r.diaCobro || '';
     $('i-inquilino').value = r.inquilino || ''; $('i-pj').checked = !!r.inquilinoEsPersonaJuridica;
     $('i-contrato-ini').value = r.fechaInicioContrato || ''; $('i-contrato-fin').value = r.fechaFinContrato || '';
     $('i-vac').value = ((r.vacanciaEstimada||0)*100).toFixed(2);
     const gm = im.gastosMensuales || {}, ga = im.gastosAnuales || {};
-    $('i-g-mant').value = gm.mantenimiento || ''; $('i-g-adm').value = gm.administracion || '';
-    $('i-g-seg').value = gm.seguro || ''; $('i-g-otros').value = gm.otros || '';
-    $('i-ipi').value = ga.ipi || ''; $('i-rep').value = ga.reparacionesEstimadas || '';
+    Miles.set('i-g-mant', gm.mantenimiento || ''); Miles.set('i-g-adm', gm.administracion || '');
+    Miles.set('i-g-seg', gm.seguro || ''); Miles.set('i-g-otros', gm.otros || '');
+    Miles.set('i-ipi', ga.ipi || ''); Miles.set('i-rep', ga.reparacionesEstimadas || '');
     const h = im.hipoteca || { activa: false };
     $('i-hip').checked = !!h.activa;
     $('i-bloque-hip').style.display = h.activa ? 'block' : 'none';
-    $('i-hip-inst').value = h.institucion || ''; $('i-hip-saldo').value = h.saldoActual || '';
-    $('i-hip-fecha').value = h.fechaSaldo || ''; $('i-hip-cuota').value = h.cuotaMensual || '';
+    $('i-hip-inst').value = h.institucion || ''; Miles.set('i-hip-saldo', h.saldoActual || '');
+    $('i-hip-fecha').value = h.fechaSaldo || ''; Miles.set('i-hip-cuota', h.cuotaMensual || '');
     $('i-hip-tasa').value = h.tasaAnual ? (h.tasaAnual*100).toFixed(2) : '';
-    $('i-hip-orig').value = h.montoOriginal || '';
+    Miles.set('i-hip-orig', h.montoOriginal || '');
     $('i-notas').value = im.notas || '';
     Forms.previewInm();
     window.scrollTo(0,0);
@@ -1999,7 +2125,7 @@ const Informe = {
       <h2>Instrumentos financieros</h2>
       <table><thead><tr><th>Nombre</th><th>Institución</th><th>Titular</th><th>Mon.</th><th class="num-r">Capital</th><th class="num-r">Valor actual</th><th class="num-r">Tasa</th><th>Vencimiento</th></tr></thead>
       <tbody>${filasInst || '<tr><td colspan="8">Sin instrumentos</td></tr>'}</tbody></table>
-      <div class="pdf-foot">Preparado con Abreu Lantigua desde el iPhone de Jochy. Página 1 de 2.</div>`;
+      <div class="pdf-foot">Preparado con Abreu Lantigua desde el iPhone de Juan José. Página 1 de 2.</div>`;
 
     const p2 = `
       <h1 style="font-size:18px">Patrimonio Abreu Lantigua — ${Fmt.fecha(hoy)}</h1>
@@ -2101,10 +2227,30 @@ function snapshotDiario(){
   Store.save();
 }
 
+/* El splash se retira cuando la app ya montó, con un mínimo en pantalla para
+   que la animación del monograma no se vea cortada. */
+function ocultarSplash(){
+  const s = document.getElementById('splash');
+  if (!s) return;
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const espera = reduce ? 250 : 1350;
+  setTimeout(() => {
+    s.classList.add('oculto');
+    setTimeout(() => { if (s.parentNode) s.parentNode.removeChild(s); }, 600);
+  }, espera);
+}
+
+// Red de seguridad: si algo fallara al montar, el splash igual se retira.
+setTimeout(() => {
+  const s = document.getElementById('splash');
+  if (s) s.classList.add('oculto');
+}, 4000);
+
 document.addEventListener('DOMContentLoaded', () => {
   Store.load();
   snapshotDiario();
   UI.init();
+  ocultarSplash();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

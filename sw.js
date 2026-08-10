@@ -1,7 +1,11 @@
-/* Service worker — Abreu Lantigua v1
-   Estrategia: cache-first para el shell y las librerías CDN.
+/* Service worker — Abreu Lantigua v2
+   Estrategia mixta:
+   - El HTML de la app va "red primero": así cada versión nueva que subas a
+     GitHub Pages llega al iPhone sin tener que borrar la app. Si no hay red,
+     se sirve la última copia cacheada y la app abre igual.
+   - Las librerías de CDN y los íconos van "caché primero": no cambian.
    Sin llamadas de red adicionales: solo se cachea lo que la app ya pide. */
-const CACHE = 'abreu-lantigua-v1';
+const CACHE = 'abreu-lantigua-v2';
 const SHELL = [
   './',
   './index.html',
@@ -15,7 +19,9 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -27,13 +33,38 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+/* ¿Es el documento de la app? Navegaciones e index.html. */
+function esDocumento(req) {
+  return req.mode === 'navigate' ||
+         (req.destination === 'document') ||
+         req.url.endsWith('/index.html') ||
+         req.url.endsWith('/');
+}
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+
+  if (esDocumento(e.request)) {
+    // Red primero, caché como respaldo.
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put('./index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('./index.html').then((hit) => hit || caches.match('./')))
+    );
+    return;
+  }
+
+  // Resto: caché primero.
   e.respondWith(
     caches.match(e.request).then((hit) => {
       if (hit) return hit;
       return fetch(e.request).then((res) => {
-        // Cachear en runtime solo respuestas válidas del mismo origen o de cdnjs
         const url = e.request.url;
         const cacheable = res && res.status === 200 &&
           (url.startsWith(self.location.origin) || url.startsWith('https://cdnjs.cloudflare.com'));
