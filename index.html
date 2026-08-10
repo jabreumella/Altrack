@@ -414,6 +414,13 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
           <div><label>Fecha vencimiento</label><input id="c-venc" type="date"></div>
         </div>
         <div class="switch-row"><span>Renovación automática</span><span class="switch"><input type="checkbox" id="c-renov" checked><span class="tr"></span><span class="th"></span></span></div>
+        <label>Base de días del banco</label>
+        <select id="c-base">
+          <option value="360">360 — días reales / 360</option>
+          <option value="365">365 — días reales / 365</option>
+        </select>
+        <div class="switch-row"><span>La retención se descuenta cada mes<br><span class="tiny">Solo capitaliza el interés neto</span></span><span class="switch"><input type="checkbox" id="c-cap-neto"><span class="tr"></span><span class="th"></span></span></div>
+        <div class="tiny">Verifica ambos contra tu estado de cuenta: cambian de banco a banco y mueven la cifra de forma visible en capitales grandes.</div>
         <label>Notas</label><textarea id="c-notas" rows="2"></textarea>
         <div class="preview" id="c-preview" style="display:none"></div>
         <div class="err" id="c-err"></div>
@@ -677,7 +684,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 3,
+  version: 4,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -727,7 +734,8 @@ const Store = {
 
   /* Migraciones encadenadas. Nunca rompen datos existentes.
      v1 → v2: agrega el bloque meta.
-     v2 → v3: renombra los titulares (Jochy → Juan José, Esposa → Massi). */
+     v2 → v3: renombra los titulares (Jochy → Juan José, Esposa → Massi).
+     v3 → v4: baja al instrumento la base de días y la capitalización neta. */
   migrar(d){
     const base = DEFAULT_DATA();
     d.config = Object.assign(base.config, d.config || {});
@@ -755,6 +763,18 @@ const Store = {
       d.titulares = base.titulares.slice();
       d.version = 3;
     }
+
+    if (d.version < 4) {
+      // Convenciones de cálculo al instrumento. Se siembra el valor que preserva
+      // exactamente el comportamiento anterior; cada certificado se ajusta editándolo.
+      d.instrumentos.forEach(x => {
+        if (x.tipo !== 'certificado') return;
+        if (x.baseDias == null) x.baseDias = (d.config && d.config.baseDias) || 365;
+        if (x.retencionCapitalizaNeto == null) x.retencionCapitalizaNeto = false;
+      });
+      d.version = 4;
+    }
+
     d.titulares = d.titulares || base.titulares.slice();
     return d;
   },
@@ -787,40 +807,125 @@ const Calc = {
   cfg(){ return Store.data.config; },
 
   /* ---------- Certificados ---------- */
-  certificado(inst, fechaISO){
+  /* Convenciones del instrumento, con respaldo en la configuración global.
+     Viven en el instrumento porque cambian de banco a banco. */
+  convencion(inst){
     const cfg = this.cfg();
+    return {
+      base: inst.baseDias || cfg.baseDias || 365,
+      ret: cfg.aplicarRetencion ? (inst.retencionISR != null ? inst.retencionISR : cfg.retencionISR) : 0,
+      capNeto: !!inst.retencionCapitalizaNeto
+    };
+  },
+
+  /* Fechas de corte: aniversario mensual del día de apertura, hasta `hasta`.
+     Devuelve también el tramo parcial (stub) que va del último corte a la fecha. */
+  cortesCertificado(inst, hasta){
+    const cortes = [];
+    let n = 1, prev = inst.fechaInicio;
+    while (n <= 600) {
+      const corte = Fecha.addMeses(inst.fechaInicio, n);
+      if (Fecha.dias(corte, hasta) < 0) break;
+      cortes.push({ desde: prev, hasta: corte, dias: Fecha.dias(prev, corte) });
+      prev = corte; n++;
+    }
+    return { cortes, ultimoCorte: prev, diasStub: Math.max(0, Fecha.dias(prev, hasta)) };
+  },
+
+  /* Certificado valuado a una fecha cualquiera (pasada, hoy o futura).
+
+     Metodología, idéntica a la del estado de cuenta bancario:
+     - Cada período corre de aniversario a aniversario y usa DÍAS REALES:
+         interés = saldo · tasa · díasDelPeríodo / baseDías
+       Por eso febrero rinde menos que enero: no son meses de 30 parejos.
+     - Si la retención se descuenta cada mes, solo el interés NETO capitaliza;
+       el 10% sale del instrumento y no vuelve a generar interés.
+     - El tramo entre el último corte y la fecha es interés SIMPLE, no capitalizado,
+       y se reporta aparte como "interés ganado no pagado". */
+  certificado(inst, fechaISO){
     const f = fechaISO || Fecha.hoy();
+    const cv = this.convencion(inst);
     // La valuación no pasa del vencimiento salvo renovación automática
     const fEval = (!inst.renovacionAutomatica && Fecha.dias(inst.fechaVencimiento, f) > 0)
       ? inst.fechaVencimiento : f;
-    const dias = Math.max(0, Fecha.dias(inst.fechaInicio, fEval));
-    const mf = Fecha.mesesFrac(inst.fechaInicio, fEval);
-    const im = inst.tasaNominalAnual / 12;
-    let valor = inst.capital, interesDevengado = 0, interesCobrado = 0;
-
-    if (inst.modalidad === 'capitalizable_mensual') {
-      valor = inst.capital * Math.pow(1 + im, mf.frac);
-      interesDevengado = valor - inst.capital;
-    } else if (inst.modalidad === 'pago_mensual') {
-      valor = inst.capital; // el interés sale del instrumento
-      interesCobrado = inst.capital * im * mf.completos;
-      // devengado del mes parcial en curso (aún no pagado)
-      interesDevengado = inst.capital * im * (mf.frac - mf.completos);
-    } else { // pago_vencimiento
-      interesDevengado = inst.capital * inst.tasaNominalAnual * (dias / cfg.baseDias);
-      valor = inst.capital + interesDevengado;
+    if (Fecha.dias(inst.fechaInicio, fEval) <= 0) {
+      return {
+        valor: inst.capital, valorNeto: inst.capital,
+        saldoCapitalizado: inst.capital, devengadoNoPagado: 0,
+        interesDevengado: 0, interesCobrado: 0, interesCobradoNeto: 0,
+        interesBrutoTotal: 0, interesNetoTotal: 0,
+        retenidoAcumulado: 0, retencionPendiente: 0,
+        diasTranscurridos: 0, diasStub: 0, periodos: [],
+        pagoMensualBruto: inst.capital * inst.tasaNominalAnual * 30 / cv.base,
+        pagoMensualNeto: inst.capital * inst.tasaNominalAnual * 30 / cv.base * (1 - cv.ret)
+      };
     }
-    const ret = cfg.aplicarRetencion ? cfg.retencionISR : 0;
+
+    const { cortes, diasStub } = this.cortesCertificado(inst, fEval);
+    const capitaliza = inst.modalidad === 'capitalizable_mensual';
+    const pagaMensual = inst.modalidad === 'pago_mensual';
+
+    let saldo = inst.capital;      // base sobre la que corre el interés
+    let brutoPeriodos = 0;         // interés bruto de los períodos cerrados
+    let retenido = 0;              // retención ya practicada
+    let cobrado = 0;               // interés que salió del instrumento (pago mensual)
+    const periodos = [];
+
+    for (const p of cortes) {
+      const interes = saldo * inst.tasaNominalAnual * p.dias / cv.base;
+      const reten = (capitaliza ? cv.capNeto : true) ? interes * cv.ret : 0;
+      brutoPeriodos += interes;
+      retenido += reten;
+      if (capitaliza) {
+        saldo += interes - reten;              // solo el neto vuelve a generar interés
+      } else if (pagaMensual) {
+        cobrado += interes;                    // el interés sale; el capital no crece
+      }
+      periodos.push({ fecha: p.hasta, dias: p.dias, interes, retencion: reten, saldo });
+    }
+
+    // Tramo parcial: interés simple sobre el saldo vigente, aún no liquidado
+    const baseStub = capitaliza ? saldo : inst.capital;
+    const devengadoNoPagado = baseStub * inst.tasaNominalAnual * diasStub / cv.base;
+
+    let valor, interesDevengado, retencionPendiente;
+    if (capitaliza) {
+      valor = saldo + devengadoNoPagado;
+      interesDevengado = brutoPeriodos + devengadoNoPagado;
+      // Si capitaliza neto, lo único sin retener es el tramo parcial.
+      retencionPendiente = (cv.capNeto ? devengadoNoPagado : interesDevengado) * cv.ret;
+    } else if (pagaMensual) {
+      valor = inst.capital;
+      interesDevengado = devengadoNoPagado;
+      retencionPendiente = devengadoNoPagado * cv.ret;
+    } else { // pago_vencimiento: devengo lineal sobre días reales, nada se liquida antes
+      interesDevengado = inst.capital * inst.tasaNominalAnual
+                       * Fecha.dias(inst.fechaInicio, fEval) / cv.base;
+      valor = inst.capital + interesDevengado;
+      retencionPendiente = interesDevengado * cv.ret;
+      retenido = 0;
+    }
+
+    const interesBrutoTotal = pagaMensual ? cobrado + devengadoNoPagado : interesDevengado;
+    const pagoMensualBruto = inst.capital * inst.tasaNominalAnual * 30 / cv.base;
+
     return {
-      valor, interesDevengado, interesCobrado,
-      interesBrutoTotal: interesDevengado + interesCobrado,
-      interesNetoTotal: (interesDevengado + interesCobrado) * (1 - ret),
-      interesCobradoNeto: interesCobrado * (1 - ret),
-      valorNeto: inst.modalidad === 'pago_mensual' ? inst.capital
-               : inst.capital + interesDevengado * (1 - ret),
-      diasTranscurridos: dias,
-      pagoMensualBruto: inst.capital * im,
-      pagoMensualNeto: inst.capital * im * (1 - ret)
+      valor,
+      valorNeto: valor - retencionPendiente,
+      saldoCapitalizado: capitaliza ? saldo : inst.capital,
+      devengadoNoPagado,
+      interesDevengado,
+      interesCobrado: cobrado,
+      interesCobradoNeto: cobrado * (1 - cv.ret),
+      interesBrutoTotal,
+      interesNetoTotal: interesBrutoTotal * (1 - cv.ret),
+      retenidoAcumulado: retenido,
+      retencionPendiente,
+      diasTranscurridos: Math.max(0, Fecha.dias(inst.fechaInicio, fEval)),
+      diasStub,
+      periodos,
+      pagoMensualBruto,
+      pagoMensualNeto: pagoMensualBruto * (1 - cv.ret)
     };
   },
 
@@ -1447,7 +1552,8 @@ const UI = {
           <div><label>Fecha de la tasa</label><input id="aj-tc-fecha" type="date" value="${c.tasaCambioFecha}"></div>
         </div>
         <div class="tiny" style="margin-top:6px">Cada edición se guarda en el historial de tasas (${(c.historialTasas||[]).length} registro${(c.historialTasas||[]).length===1?'':'s'}) para calcular el efecto cambiario.</div>
-        <label>Base de días</label>
+        <label>Base de días (por defecto para instrumentos nuevos)</label>
+        <div class="tiny" style="margin-bottom:5px">Cada certificado guarda la suya; esta solo siembra el formulario.</div>
         <select id="aj-dias"><option value="365"${c.baseDias===365?' selected':''}>365 (actual/365)</option><option value="360"${c.baseDias===360?' selected':''}>360 (30/360)</option></select>
       </fieldset>
       <fieldset>
@@ -1547,17 +1653,20 @@ const Ficha = {
     const cfg = Store.data.config;
     if (i.tipo === 'certificado') {
       const c = Calc.certificado(i, Fecha.hoy());
-      // Tabla de devengo mes a mes (bruta)
-      let filas = '', f = i.fechaInicio, prev = 0, n = 0;
-      while (Fecha.dias(f, i.fechaVencimiento) > 0 && n < 120) {
-        const fFin = Fecha.addMeses(i.fechaInicio, n + 1);
-        const corte = Fecha.dias(fFin, i.fechaVencimiento) >= 0 ? fFin : i.fechaVencimiento;
-        const acum = Calc.certificado(i, corte).interesBrutoTotal;
-        const esHoy = Fecha.dias(f, Fecha.hoy()) >= 0 && Fecha.dias(Fecha.hoy(), corte) > 0;
-        filas += `<tr${esHoy?' class="hoy"':''}><td>${Fmt.fechaCorta(corte)}</td>
-          <td class="num">${Fmt.num(acum - prev)}</td><td class="num">${Fmt.num(acum)}</td>
-          <td class="num">${Fmt.num(i.modalidad==='pago_mensual' ? i.capital : i.capital + acum)}</td></tr>`;
-        prev = acum; f = corte; n++;
+      const cv = Calc.convencion(i);
+      // Cronograma hasta el vencimiento, con los mismos cortes que usa el banco
+      const cron = Calc.certificado(i, i.fechaVencimiento);
+      const hoyISO = Fecha.hoy();
+      let filas = '', acum = 0;
+      for (const p of cron.periodos) {
+        acum += p.interes;
+        const esHoy = Fecha.dias(hoyISO, p.fecha) >= 0 &&
+                      Fecha.dias(Fecha.addMeses(p.fecha, -1), hoyISO) >= 0;
+        filas += `<tr${esHoy?' class="hoy"':''}><td>${Fmt.fechaCorta(p.fecha)}</td>
+          <td class="num">${p.dias}</td>
+          <td class="num">${Fmt.num(p.interes)}</td>
+          <td class="num">${Fmt.num(p.retencion)}</td>
+          <td class="num">${Fmt.num(i.modalidad === 'pago_mensual' ? i.capital : p.saldo)}</td></tr>`;
       }
       const modTxt = { capitalizable_mensual: 'Capitalizable mensual', pago_mensual: 'Pago mensual', pago_vencimiento: 'Pago al vencimiento' }[i.modalidad];
       const diasV = Fecha.dias(Fecha.hoy(), i.fechaVencimiento);
@@ -1573,19 +1682,26 @@ const Ficha = {
         </div>
         <div class="card">
           <h3>Posición a hoy</h3>
+          ${i.modalidad === 'capitalizable_mensual' ? `
+          <div class="kv"><span class="k">Saldo capitalizado <span class="tiny">(último corte ${Fmt.fecha(Fecha.addMeses(i.fechaInicio, c.periodos.length))})</span></span><span class="v num">${Fmt.money(c.saldoCapitalizado, i.moneda)}</span></div>
+          <div class="kv"><span class="k">Interés ganado no pagado <span class="tiny">(${c.diasStub} día${c.diasStub===1?'':'s'})</span></span><span class="v num">${Fmt.money(c.devengadoNoPagado, i.moneda)}</span></div>` : ''}
           <div class="kv"><span class="k">Valor del instrumento (bruto)</span><span class="v num">${Fmt.money(c.valor, i.moneda)}</span></div>
-          <div class="kv"><span class="k">Interés devengado bruto</span><span class="v num">${Fmt.money(c.interesDevengado, i.moneda)}</span></div>
+          <div class="kv"><span class="k">Valor si redimes hoy <span class="tiny">(neto de retención pendiente)</span></span><span class="v num">${Fmt.money(c.valorNeto, i.moneda)}</span></div>
           ${i.modalidad === 'pago_mensual' ? `<div class="kv"><span class="k">Interés cobrado acumulado (bruto)</span><span class="v num">${Fmt.money(c.interesCobrado, i.moneda)}</span></div>
-          <div class="kv"><span class="k">Pago mensual (bruto / neto)</span><span class="v num">${Fmt.money(c.pagoMensualBruto, i.moneda)} / ${Fmt.money(c.pagoMensualNeto, i.moneda)}</span></div>` : ''}
-          <div class="kv"><span class="k">Interés total bruto</span><span class="v num">${Fmt.money(c.interesBrutoTotal, i.moneda)}</span></div>
-          <div class="kv"><span class="k">Interés total neto <span class="tiny">(retención ${Fmt.pct(cfg.retencionISR,0)})</span></span><span class="v num">${Fmt.money(c.interesNetoTotal, i.moneda)}</span></div>
-          <div class="tiny" style="margin-top:8px">Supuestos: ${i.modalidad==='capitalizable_mensual' ? 'VF = capital·(1+tasa/12)^(meses + días residuales/30).' : i.modalidad==='pago_mensual' ? 'El interés pagado sale del instrumento; el capital no crece.' : `Devengo lineal: capital·tasa·(días/${cfg.baseDias}).`} ${cfg.aplicarRetencion ? 'El dashboard usa cifras netas.' : 'El dashboard usa cifras brutas (retención desactivada).'}</div>
+          <div class="kv"><span class="k">Pago mensual aprox. (bruto / neto)</span><span class="v num">${Fmt.money(c.pagoMensualBruto, i.moneda)} / ${Fmt.money(c.pagoMensualNeto, i.moneda)}</span></div>` : ''}
+          <div class="kv"><span class="k">Interés bruto ganado a la fecha</span><span class="v num">${Fmt.money(c.interesBrutoTotal, i.moneda)}</span></div>
+          <div class="kv"><span class="k">Retención ya practicada</span><span class="v num">${Fmt.money(c.retenidoAcumulado, i.moneda)}</span></div>
+          <div class="kv"><span class="k">Interés neto <span class="tiny">(retención ${Fmt.pct(cv.ret,0)})</span></span><span class="v num">${Fmt.money(c.interesNetoTotal, i.moneda)}</span></div>
+          <div class="tiny" style="margin-top:8px">Convención: días reales / ${cv.base}, cortes en el día ${Fecha.parse(i.fechaInicio).getDate()} de cada mes.
+          ${i.modalidad==='capitalizable_mensual' ? (cv.capNeto ? ' La retención se descuenta cada mes: solo capitaliza el interés neto.' : ' La retención se liquida al final: capitaliza el interés bruto.') : i.modalidad==='pago_mensual' ? ' El interés pagado sale del instrumento; el capital no crece.' : ' Devengo lineal, todo se liquida al vencimiento.'}
+          El tramo desde el último corte es interés simple, no capitalizado.</div>
         </div>
         <div class="card">
-          <h3>Devengo mes a mes (bruto)</h3>
-          <div style="max-height:260px;overflow-y:auto">
-          <table class="dev"><thead><tr><th>Corte</th><th>Interés mes</th><th>Acumulado</th><th>Valor</th></tr></thead><tbody>${filas}</tbody></table>
+          <h3>Cronograma mes a mes</h3>
+          <div style="max-height:280px;overflow-y:auto">
+          <table class="dev"><thead><tr><th>Corte</th><th>Días</th><th>Interés</th><th>Retención</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table>
           </div>
+          <div class="tiny" style="margin-top:8px">Los días cambian mes a mes porque se cuentan reales: febrero rinde menos que enero.</div>
         </div>
         ${i.notas ? `<div class="card"><h3>Notas</h3><div class="small">${i.notas}</div></div>` : ''}
         <div class="btn-row">
@@ -1782,6 +1898,8 @@ const Forms = {
     const box = $('c-preview');
     if (cap === null || tasa === null || !ini || !ven || Fecha.dias(ini, ven) <= 0) { box.style.display = 'none'; return; }
     const inst = { tipo:'certificado', capital: cap, tasaNominalAnual: tasa/100, modalidad: $('c-modalidad').value,
+      baseDias: parseInt($('c-base').value, 10) || 365,
+      retencionCapitalizaNeto: $('c-cap-neto').checked,
       fechaInicio: ini, fechaVencimiento: ven, renovacionAutomatica: false };
     const c = Calc.certificado(inst, ven);
     const mon = $('c-moneda').value;
@@ -1822,6 +1940,8 @@ const Forms = {
       moneda: $('c-moneda').value, titular: $('c-titular').value,
       capital: cap, tasaNominalAnual: tasa/100,
       modalidad: $('c-modalidad').value,
+      baseDias: parseInt($('c-base').value, 10) || 365,
+      retencionCapitalizaNeto: $('c-cap-neto').checked,
       fechaInicio: ini, fechaVencimiento: ven,
       renovacionAutomatica: $('c-renov').checked,
       notas: $('c-notas').value.trim()
@@ -1976,6 +2096,8 @@ const Forms = {
       $('c-moneda').value = i.moneda; $('c-titular').value = i.titular;
       Miles.set('c-capital', i.capital); $('c-tasa').value = (i.tasaNominalAnual*100).toFixed(2);
       $('c-modalidad').value = i.modalidad;
+      $('c-base').value = String(i.baseDias || Store.data.config.baseDias || 365);
+      $('c-cap-neto').checked = !!i.retencionCapitalizaNeto;
       $('c-inicio').value = i.fechaInicio; $('c-venc').value = i.fechaVencimiento;
       $('c-renov').checked = !!i.renovacionAutomatica; $('c-notas').value = i.notas || '';
       Forms.previewCert();
@@ -2139,7 +2261,7 @@ const Informe = {
         <div style="flex:1;text-align:center"><img id="pdf-pie-3" style="max-width:100%;max-height:190px"><div style="font-size:10px;color:#6b7f74">Detalle</div></div>
       </div>
       <div class="pdf-foot">
-        <b>Supuestos:</b> base de días ${cfg.baseDias}. Retención ISR sobre intereses: ${cfg.aplicarRetencion ? Fmt.pct(cfg.retencionISR,0) + ' aplicada' : 'no aplicada'}. ISR sobre alquileres: ${cfg.aplicarIsrAlquiler ? Fmt.pct(cfg.isrAlquilerEfectivo,0) + ' efectivo sobre renta bruta (aproximación, por confirmar con el contador)' : 'no aplicado'}.
+        <b>Supuestos:</b> cada certificado usa la base de días y el criterio de capitalización declarados en su ficha (días reales sobre 360 o 365); ${cfg.baseDias} es el valor por defecto para instrumentos nuevos. Retención ISR sobre intereses: ${cfg.aplicarRetencion ? Fmt.pct(cfg.retencionISR,0) + ' aplicada' : 'no aplicada'}. ISR sobre alquileres: ${cfg.aplicarIsrAlquiler ? Fmt.pct(cfg.isrAlquilerEfectivo,0) + ' efectivo sobre renta bruta (aproximación, por confirmar con el contador)' : 'no aplicado'}.
         Los valores de mercado de los inmuebles son estimados por el usuario en la fecha indicada. El patrimonio inmobiliario se reporta como equity (valor estimado menos saldo de hipoteca).
         Las proyecciones son determinísticas y los rendimientos estimados de fondos no son tasas contractuales. Cifras consolidadas convertidas a ${base} a la tasa indicada en el encabezado.
         Documento generado en el dispositivo; ningún dato sale del iPhone. Página 2 de 2.</div>`;
