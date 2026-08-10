@@ -1,0 +1,15 @@
+{
+  "name": "Abreu Lantigua",
+  "short_name": "Abreu Lantigua",
+  "description": "Monitor de patrimonio financiero e inmobiliario",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ecf9ee",
+  "theme_color": "#0d4029",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
