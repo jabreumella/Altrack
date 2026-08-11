@@ -5,7 +5,7 @@
      se sirve la última copia cacheada y la app abre igual.
    - Las librerías de CDN y los íconos van "caché primero": no cambian.
    Sin llamadas de red adicionales: solo se cachea lo que la app ya pide. */
-const CACHE = 'abreu-lantigua-v5';
+const CACHE = 'abreu-lantigua-v6';
 const SHELL = [
   './',
   './index.html',
@@ -66,14 +66,26 @@ self.addEventListener('fetch', (e) => {
       if (hit) return hit;
       return fetch(e.request).then((res) => {
         const url = e.request.url;
-        const cacheable = res && res.status === 200 &&
+        const tipo = res && res.headers ? (res.headers.get('content-type') || '') : '';
+        // Un script solo se cachea si de verdad vino como JavaScript. Cachear un
+        // HTML de error bajo la URL de Chart.js dejaría la app sin gráficos
+        // hasta borrarla del teléfono.
+        const tipoOk = e.request.destination !== 'script' || tipo.indexOf('javascript') >= 0 || tipo.indexOf('/ecmascript') >= 0;
+        const cacheable = res && res.status === 200 && tipoOk &&
           (url.startsWith(self.location.origin) || url.startsWith('https://cdnjs.cloudflare.com'));
         if (cacheable) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
         }
         return res;
-      }).catch(() => caches.match('./index.html'));
+      }).catch(() => {
+        /* Antes esto devolvía index.html como respaldo de CUALQUIER recurso.
+           Para un <script> del CDN eso significaba entregar HTML con
+           content-type text/html: el navegador lo descartaba y Chart quedaba
+           sin definir, sin ningún error visible. Mejor devolver un error real
+           para que la app lo detecte y reintente la carga. */
+        return new Response('', { status: 504, statusText: 'Sin conexión' });
+      });
     })
   );
 });

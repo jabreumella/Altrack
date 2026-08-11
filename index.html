@@ -13,6 +13,35 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+/* Cargador de respaldo. Si una librería del CDN no quedó definida (red
+   intermitente al abrir, o una entrada de caché servida con el tipo
+   equivocado), se reinyecta el script saltando la caché. Sin esto la app
+   se queda sin gráficos hasta borrarla del teléfono. */
+const Libs = {
+  urls: {
+    Chart: 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+    jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+  },
+  pendientes: {},
+  presente(n){ return n === 'jspdf' ? !!(window.jspdf && window.jspdf.jsPDF) : !!window[n]; },
+  cargar(n){
+    if (Libs.presente(n)) return Promise.resolve(true);
+    if (Libs.pendientes[n]) return Libs.pendientes[n];
+    Libs.pendientes[n] = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = Libs.urls[n] + '?r=' + Date.now(); // sortea la caché del SW
+      s.crossOrigin = 'anonymous';
+      s.onload = () => resolve(Libs.presente(n));
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+      setTimeout(() => resolve(Libs.presente(n)), 12000);
+    }).then((ok) => { delete Libs.pendientes[n]; return ok; });
+    return Libs.pendientes[n];
+  }
+};
+</script>
 <style>
 /* ============ Tokens ============ */
 :root{
@@ -75,7 +104,7 @@ header.app .sub{font-size:11px;color:var(--gris);font-weight:400}
 .icon-btn:active{background:rgba(13,64,41,.08)}
 
 main{
-  padding:calc(var(--sat) + 72px) 14px calc(var(--sab) + 90px);
+  padding:calc(var(--sat) + 72px) 14px calc(var(--sab) * .45 + 66px);
   max-width:640px;margin:0 auto;
   width:100%;overflow-x:hidden;
 }
@@ -89,14 +118,14 @@ main{
 nav.tabbar{
   position:fixed;bottom:0;left:0;right:0;z-index:50;
   background:var(--menta);
-  display:flex;padding:6px 4px calc(var(--sab) + 6px);
+  display:flex;padding:2px 4px calc(var(--sab) * .45 + 4px);
 }
 nav.tabbar button{
-  flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
-  min-height:48px;color:var(--gris);font-size:11px;font-weight:600;border-radius:12px;
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;
+  min-height:44px;color:var(--gris);font-size:10px;font-weight:600;border-radius:12px;
   transition:color .2s;
 }
-nav.tabbar button .ic{font-size:21px;line-height:1}
+nav.tabbar button .ic{font-size:18px;line-height:1}
 nav.tabbar button.active{color:var(--verde)}
 
 /* ============ Componentes ============ */
@@ -104,8 +133,8 @@ nav.tabbar button.active{color:var(--verde)}
 .card h3{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 .hero-card{text-align:left}
 /* La cifra héroe se adapta al ancho del iPhone: nunca empuja la página hacia los lados */
-.hero{font-size:clamp(26px,9.8vw,40px);font-weight:700;line-height:1.1;color:var(--bosque);white-space:nowrap}
-.hero.larga{font-size:clamp(21px,7.6vw,32px)}
+.hero{font-size:clamp(22px,7.6vw,30px);font-weight:700;line-height:1.15;color:var(--bosque);white-space:nowrap}
+.hero.larga{font-size:clamp(19px,6.4vw,26px)}
 .hero .cur{font-size:.5em;opacity:.55;font-weight:600;margin-right:2px}
 .hero-note{font-size:12px;color:var(--gris);margin-top:6px}
 /* Variación del mes al estilo píldora: monto + chip verde con flecha */
@@ -200,8 +229,11 @@ table.dev tr.hoy td{background:rgba(30,198,119,.08);font-weight:700}
 .empty .big{font-size:36px;margin-bottom:8px}
 .form-block{display:none}
 .form-block.active{display:block}
-fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-shadow:var(--sombra);padding:6px 16px 16px;margin-bottom:12px}
-legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 2px}
+fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-shadow:var(--sombra);padding:14px 16px 16px;margin-bottom:12px}
+/* Antes era un <legend> nativo: Safari lo saca del flujo y lo monta sobre el
+   borde del fieldset, así que el título quedaba pisando el borde superior. */
+.legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.5px;padding:0 0 2px}
+.legend + .legend, fieldset > .legend ~ .legend{margin-top:14px}
 .fila2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .switch-row{display:flex;justify-content:space-between;align-items:center;min-height:44px;font-size:14px;gap:10px}
 .switch{position:relative;width:50px;height:30px;flex-shrink:0}
@@ -343,7 +375,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
 
     <button class="card" style="width:100%;text-align:left" id="card-flujo">
       <h3>Rendimiento del mes &#9432;</h3>
-      <div class="num" style="font-size:26px;font-weight:700;color:var(--verde)" id="flujo-total"></div>
+      <div class="num" style="font-size:clamp(20px,6.6vw,28px);font-weight:700;color:var(--verde)" id="flujo-total"></div>
       <div class="small">Interés del mes completo + rentas netas, con corte al día 1</div>
       <div id="flujo-desglose" style="display:none;margin-top:10px"></div>
     </button>
@@ -364,7 +396,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
 
     <div class="card">
       <h3>Portafolio de inversión</h3>
-      <div class="num" style="font-size:24px;font-weight:700" id="res-fin-valor"></div>
+      <div class="num" style="font-size:clamp(20px,6.6vw,28px);font-weight:700" id="res-fin-valor"></div>
       <div class="small num" id="res-fin-rend"></div>
       <div class="small num" id="res-inm-rend" style="margin-top:6px"></div>
     </div>
@@ -423,7 +455,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
     <!-- Certificado -->
     <div class="form-block active" id="form-certificado">
       <fieldset>
-        <legend>Certificado financiero</legend>
+        <div class="legend">Certificado financiero</div>
         <label>Nombre</label><input id="c-nombre" placeholder="Certificado Banco X 12M">
         <label>Institución</label><input id="c-institucion" placeholder="Banco Popular">
         <div class="fila2">
@@ -459,11 +491,11 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
       </fieldset>
     </div>
 
-    <!-- Fondo mutuo: renta fija con pago al vencimiento y retención propia -->
+    <!-- Fondo mutuo: renta fija con ganancia conocida y pago al vencimiento -->
     <div class="form-block" id="form-fondo">
       <fieldset>
-        <legend>Fondo mutuo / de inversión</legend>
-        <div class="tiny" style="margin-top:6px">Renta fija con devengo lineal y <b>pago al vencimiento</b>. A diferencia del certificado, no retiene el 10% de la DGII: captura la retención propia del fondo (suele ser menor al 1%).</div>
+        <div class="legend">Fondo mutuo / de inversión</div>
+        <div class="tiny" style="margin-top:6px">Renta fija con <b>pago al vencimiento</b>. Como ya conoces la ganancia total del plazo, se captura ese monto y la app lo reparte día a día: el prorrateo del mes en curso entra en <b>Rendimiento del mes</b>.</div>
         <label>Nombre</label><input id="f-nombre" placeholder="Fondo Renta Fija USD">
         <label>Institución (AFI / SAFI)</label><input id="f-institucion" placeholder="AFI Universal">
         <div class="fila2">
@@ -471,19 +503,13 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
           <div><label>Titular</label><select id="f-titular"><option>Juan José</option><option>Massi</option><option>Conjunto</option></select></div>
         </div>
         <label>Capital</label><input id="f-capital" inputmode="decimal" data-miles placeholder="500000">
-        <label>Tasa nominal anual (%)</label><input id="f-tasa" inputmode="decimal" placeholder="9.75">
+        <label>Ganancia al vencimiento</label><input id="f-ganancia" inputmode="decimal" data-miles placeholder="48750">
+        <div class="tiny">El monto total que recibirás por encima del capital, tal como lo indica el fondo. Se asume neto: no se le aplica la retención del 10%.</div>
         <div class="fila2">
           <div><label>Fecha inicio</label><input id="f-inicio" type="date"></div>
           <div><label>Fecha vencimiento</label><input id="f-venc" type="date"></div>
         </div>
         <div class="switch-row"><span>Renovación automática</span><span class="switch"><input type="checkbox" id="f-renov" checked><span class="tr"></span><span class="th"></span></span></div>
-        <label>Base de días</label>
-        <select id="f-base">
-          <option value="360">360 — días reales / 360</option>
-          <option value="365" selected>365 — días reales / 365</option>
-        </select>
-        <label>Retención propia del fondo (%)</label><input id="f-ret" inputmode="decimal" value="1.00">
-        <div class="tiny">Verifícala contra el estado del fondo. Sustituye la retención general del 10% solo para este instrumento.</div>
         <label>Notas</label><textarea id="f-notas" rows="2"></textarea>
         <div class="preview" id="f-preview" style="display:none"></div>
         <div class="err" id="f-err"></div>
@@ -494,7 +520,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
     <!-- Inmueble -->
     <div class="form-block" id="form-inmueble">
       <fieldset>
-        <legend>Inmueble</legend>
+        <div class="legend">Inmueble</div>
         <label>Nombre</label><input id="i-nombre" placeholder="Apto. Torre X 3B">
         <label>Ubicación</label><input id="i-ubicacion" placeholder="Naco, Santo Domingo">
         <div class="fila2">
@@ -519,7 +545,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         </select>
       </fieldset>
       <fieldset id="i-bloque-renta">
-        <legend>Renta</legend>
+        <div class="legend">Renta</div>
         <div class="fila2">
           <div><label>Renta mensual</label><input id="i-renta" inputmode="decimal" data-miles></div>
           <div><label>Día de cobro</label><input id="i-dia-cobro" inputmode="numeric" placeholder="5"></div>
@@ -533,7 +559,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
         <label>Vacancia estimada (%)</label><input id="i-vac" inputmode="decimal" placeholder="5.00">
       </fieldset>
       <fieldset>
-        <legend>Gastos mensuales</legend>
+        <div class="legend">Gastos mensuales</div>
         <div class="fila2">
           <div><label>Mantenimiento</label><input id="i-g-mant" inputmode="decimal" data-miles placeholder="0"></div>
           <div><label>Administración</label><input id="i-g-adm" inputmode="decimal" data-miles placeholder="0"></div>
@@ -542,7 +568,7 @@ legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase
           <div><label>Seguro</label><input id="i-g-seg" inputmode="decimal" data-miles placeholder="0"></div>
           <div><label>Otros</label><input id="i-g-otros" inputmode="decimal" data-miles placeholder="0"></div>
         </div>
-        <legend>Gastos anuales</legend>
+        <div class="legend">Gastos anuales</div>
         <div class="fila2">
           <div><label>IPI</label><input id="i-ipi" inputmode="decimal" data-miles placeholder="0"></div>
           <div><label>Reparaciones estimadas</label><input id="i-rep" inputmode="decimal" data-miles placeholder="0"></div>
@@ -720,7 +746,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 5,
+  version: 6,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -834,6 +860,24 @@ const Store = {
       d.version = 5;
     }
 
+    if (d.version < 6) {
+      // Fondos: la ganancia al vencimiento pasa a ser el insumo declarado y la
+      // tasa se deriva de ella. Se convierte preservando exactamente el monto
+      // neto que el modelo anterior proyectaba, para que ninguna cifra cambie.
+      d.instrumentos.forEach(x => {
+        if (x.tipo !== 'fondo_mutuo' || x.gananciaVencimiento != null) return;
+        const base = x.baseDias || 365;
+        const dias = Math.max(1, Fecha.dias(x.fechaInicio, x.fechaVencimiento));
+        const ret = x.retencionISR != null ? x.retencionISR : 0;
+        x.gananciaVencimiento = (x.capital || 0) * (x.tasaNominalAnual || 0) * dias / base * (1 - ret);
+        delete x.tasaNominalAnual;
+        delete x.retencionISR;
+        x.modalidad = 'pago_vencimiento';
+        x.baseDias = 365;
+      });
+      d.version = 6;
+    }
+
     d.titulares = d.titulares || base.titulares.slice();
     return d;
   },
@@ -870,11 +914,38 @@ const Calc = {
      Viven en el instrumento porque cambian de banco a banco. */
   convencion(inst){
     const cfg = this.cfg();
+    // Los fondos con ganancia declarada no llevan retención: el monto que el
+    // fondo informa ya es lo que se recibe.
+    const esFondoGanancia = inst.tipo === 'fondo_mutuo' && inst.gananciaVencimiento != null;
     return {
       base: inst.baseDias || cfg.baseDias || 365,
-      ret: cfg.aplicarRetencion ? (inst.retencionISR != null ? inst.retencionISR : cfg.retencionISR) : 0,
+      ret: esFondoGanancia ? 0 : (cfg.aplicarRetencion ? (inst.retencionISR != null ? inst.retencionISR : cfg.retencionISR) : 0),
       capNeto: !!inst.retencionCapitalizaNeto
     };
+  },
+
+  /* Tasa anual del instrumento.
+     Certificado: la contractual capturada.
+     Fondo con ganancia al vencimiento: la tasa implícita que hace que el
+     devengo lineal entregue exactamente esa ganancia el día del vencimiento.
+       tasa = ganancia / capital × base / díasDelPlazo
+     Se deriva en cada cálculo, nunca se guarda: si cambias una fecha, la tasa
+     se reajusta sola y la ganancia declarada sigue siendo la verdad. */
+  tasaEfectiva(inst){
+    if (inst.tipo === 'fondo_mutuo' && inst.gananciaVencimiento != null) {
+      const base = inst.baseDias || this.cfg().baseDias || 365;
+      const diasPlazo = Math.max(1, Fecha.dias(inst.fechaInicio, inst.fechaVencimiento));
+      if (!inst.capital) return 0;
+      return (inst.gananciaVencimiento / inst.capital) * (base / diasPlazo);
+    }
+    return inst.tasaNominalAnual || 0;
+  },
+
+  /* Copia del instrumento con la tasa ya resuelta, para que el motor de renta
+     fija trabaje igual con certificados y con fondos. */
+  normalizar(inst){
+    if (inst.tipo !== 'fondo_mutuo' || inst.gananciaVencimiento == null) return inst;
+    return Object.assign({}, inst, { tasaNominalAnual: this.tasaEfectiva(inst), modalidad: 'pago_vencimiento' });
   },
 
   /* Fechas de corte: aniversario mensual del día de apertura, hasta `hasta`.
@@ -901,7 +972,8 @@ const Calc = {
        el 10% sale del instrumento y no vuelve a generar interés.
      - El tramo entre el último corte y la fecha es interés SIMPLE, no capitalizado,
        y se reporta aparte como "interés ganado no pagado". */
-  certificado(inst, fechaISO){
+  certificado(inst0, fechaISO){
+    const inst = this.normalizar(inst0);
     const f = fechaISO || Fecha.hoy();
     const cv = this.convencion(inst);
     // La valuación no pasa del vencimiento salvo renovación automática
@@ -994,7 +1066,10 @@ const Calc = {
     const f = fechaISO || Fecha.hoy();
     const d = Fecha.parse(f);
     const iniMes = Fecha.iso(new Date(d.getFullYear(), d.getMonth(), 1, 12));
-    const finMes = Fecha.iso(new Date(d.getFullYear(), d.getMonth() + 1, 0, 12));
+    // Corte del mes: del día 1 al día 1 del mes siguiente. Usar el último día
+    // del mes dejaba fuera un día de devengo, y la suma de los doce meses no
+    // llegaba a los 365 días del año.
+    const finMes = Fecha.iso(new Date(d.getFullYear(), d.getMonth() + 1, 1, 12));
     const desde = Fecha.dias(inst.fechaInicio, iniMes) > 0 ? iniMes : inst.fechaInicio;
     const tope = (!inst.renovacionAutomatica && Fecha.dias(inst.fechaVencimiento, finMes) > 0)
       ? inst.fechaVencimiento : finMes;
@@ -1104,8 +1179,8 @@ const Calc = {
     for (const inst of insts) {
       const c = this.certificado(inst, hoy);
       const v = cfg.aplicarRetencion ? c.valorNeto : c.valor;
-      if (inst.moneda === 'DOP') { finDOP += v; sumaTasaCapDOP += inst.tasaNominalAnual * inst.capital; sumaCapDOP += inst.capital; }
-      else { finUSD += v; sumaTasaCapUSD += inst.tasaNominalAnual * inst.capital; sumaCapUSD += inst.capital; }
+      if (inst.moneda === 'DOP') { finDOP += v; sumaTasaCapDOP += this.tasaEfectiva(inst) * inst.capital; sumaCapDOP += inst.capital; }
+      else { finUSD += v; sumaTasaCapUSD += this.tasaEfectiva(inst) * inst.capital; sumaCapUSD += inst.capital; }
       capitalAportado += this.aBase(inst.capital, inst.moneda);
       rendBruto += this.aBase(c.interesBrutoTotal, inst.moneda);
       rendNeto += this.aBase(c.interesNetoTotal, inst.moneda);
@@ -1159,7 +1234,7 @@ const Calc = {
     for (const inst of insts) {
       const vB = this.aBase(this.valorInstrumento(inst, hoy), inst.moneda);
       const cv = this.convencion(inst);
-      const r = inst.tasaNominalAnual * (1 - cv.ret);
+      const r = this.tasaEfectiva(inst) * (1 - cv.ret);
       sumaAnu += r * vB; sumaValAnu += vB;
     }
 
@@ -1230,6 +1305,7 @@ const UI = {
   pie3: 'institucion',
   editando: null, // {tipo, id} cuando se edita un activo existente
   charts: {},
+  cargandoChart: false,
 
   /* Iniciales del titular para las filas del portafolio.
      Juan José → JJ · Massi → MA · Conjunto → CJ */
@@ -1415,9 +1491,12 @@ const UI = {
       if (UI.charts['chart-linea']) { UI.charts['chart-linea'].destroy(); delete UI.charts['chart-linea']; }
       box.style.display = 'none'; nota.style.display = 'none';
       vacio.style.display = 'flex';
-      vacio.textContent = hayActivos
-        ? 'No se pudo cargar la librería de gráficos. Conéctate a internet una vez y vuelve a abrir la app.'
-        : 'Aún no hay activos registrados. Agrega tu primer certificado o inmueble y aquí verás la evolución del portafolio.';
+      if (!hayActivos) {
+        vacio.innerHTML = 'Aún no hay activos registrados. Agrega tu primer certificado o inmueble y aquí verás la evolución del portafolio.';
+      } else {
+        vacio.innerHTML = '<div>Cargando la librería de gráficos…<div style="margin-top:10px"><button class="btn sec mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
+        UI.reintentarGraficos(); // reinyecta el script y redibuja si lo logra
+      }
       return;
     }
     box.style.display = ''; nota.style.display = ''; vacio.style.display = 'none';
@@ -1482,10 +1561,11 @@ const UI = {
     const cfg = Store.data.config;
     // Sin activos los pasteles quedan en blanco: mejor no ocupar pantalla.
     const hayActivos = Store.data.instrumentos.length > 0 || Store.data.inmuebles.length > 0;
+    const puede = hayActivos && typeof Chart !== 'undefined';
     const bp = $('bloque-pies'), cp = $('card-pie3');
-    if (bp) bp.style.display = hayActivos ? '' : 'none';
-    if (cp) cp.style.display = hayActivos ? '' : 'none';
-    if (!hayActivos) return;
+    if (bp) bp.style.display = puede ? '' : 'none';
+    if (cp) cp.style.display = puede ? '' : 'none';
+    if (!puede) return;
     const push = (map, k, v) => map.set(k, (map.get(k) || 0) + v);
     const porMoneda = new Map(), porClase = new Map(), porTres = new Map();
     for (const i of Store.data.instrumentos) {
@@ -1524,6 +1604,19 @@ const UI = {
     UI.charts[id] = new Chart($(id), config);
   },
 
+  /* Reintenta cargar Chart.js y vuelve a dibujar. Evita el bucle infinito
+     con una bandera: si el CDN está caído de verdad, se dice y se para. */
+  reintentarGraficos(){
+    if (UI.cargandoChart) return;
+    UI.cargandoChart = true;
+    Libs.cargar('Chart').then((ok) => {
+      UI.cargandoChart = false;
+      if (ok) { UI.dibujarLinea(); UI.dibujarPies(); return; }
+      const v = $('chart-linea-vacio');
+      if (v) v.innerHTML = '<div>No se pudo cargar la librería de gráficos. Verifica la conexión.<div style="margin-top:10px"><button class="btn sec mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
+    });
+  },
+
   /* ---------- Portafolio ---------- */
   renderPortafolio(){
     const cfg = Store.data.config;
@@ -1548,8 +1641,8 @@ const UI = {
       const rendTxt = Fmt.pct(rend);
       const tot = Math.max(1, Fecha.dias(i.fechaInicio, i.fechaVencimiento));
       const prog = Math.min(100, Math.max(0, 100 * Fecha.dias(i.fechaInicio, Fecha.hoy()) / tot));
-      const etiqueta = i.tipo === 'fondo_mutuo' ? ` · fondo (ret. ${Fmt.pct(cv.ret,2)})` : '';
-      const sub = `${i.institucion} · ${Fmt.pct(i.tasaNominalAnual)}${etiqueta} · vence ${Fmt.fecha(i.fechaVencimiento)} <b>${UI.iniciales(i.titular)}</b>`;
+      const etiqueta = i.tipo === 'fondo_mutuo' ? ' · fondo' : '';
+      const sub = `${i.institucion} · ${Fmt.pct(Calc.tasaEfectiva(i))}${etiqueta} · vence ${Fmt.fecha(i.fechaVencimiento)} <b>${UI.iniciales(i.titular)}</b>`;
       return `<button class="row-inst" onclick="Ficha.instrumento('${i.id}')">
         <div class="row-top"><span class="nm">${i.nombre}</span><span class="val num">${Fmt.money(val, i.moneda)}</span></div>
         <div class="row-sub"><span>${sub}</span><span class="num delta-pos">${rendTxt}</span></div>
@@ -1602,7 +1695,7 @@ const UI = {
     const respaldoViejo = c.ultimoExport === null || Fecha.dias(c.ultimoExport, Fecha.hoy()) > 30;
     UI.abrirSheet('Ajustes', `
       <fieldset>
-        <legend>General</legend>
+        <div class="legend">General</div>
         <label>Moneda base</label>
         <select id="aj-base"><option${c.monedaBase==='DOP'?' selected':''}>DOP</option><option${c.monedaBase==='USD'?' selected':''}>USD</option></select>
         <div class="fila2">
@@ -1615,7 +1708,7 @@ const UI = {
         <select id="aj-dias"><option value="365"${c.baseDias===365?' selected':''}>365 (actual/365)</option><option value="360"${c.baseDias===360?' selected':''}>360 (30/360)</option></select>
       </fieldset>
       <fieldset>
-        <legend>Impuestos</legend>
+        <div class="legend">Impuestos</div>
         <div class="switch-row"><span>Aplicar retención ISR a intereses</span><span class="switch"><input type="checkbox" id="aj-ret-on"${c.aplicarRetencion?' checked':''}><span class="tr"></span><span class="th"></span></span></div>
         <label>% retención ISR sobre intereses</label><input id="aj-ret" inputmode="decimal" value="${(c.retencionISR*100).toFixed(2)}">
         <div class="switch-row"><span>Aplicar ISR sobre alquileres</span><span class="switch"><input type="checkbox" id="aj-isr-on"${c.aplicarIsrAlquiler?' checked':''}><span class="tr"></span><span class="th"></span></span></div>
@@ -1623,11 +1716,11 @@ const UI = {
         <div class="tiny" style="margin-top:6px">Supuesto por confirmar con el contador: el tratamiento cambia si el inquilino es persona jurídica (retiene) o física. Mientras tanto, el flujo neto es una aproximación conservadora.</div>
       </fieldset>
       <fieldset>
-        <legend>Inmuebles</legend>
+        <div class="legend">Inmuebles</div>
         <div class="switch-row"><span>Incluir inmuebles (equity) en el total</span><span class="switch"><input type="checkbox" id="aj-inm-on"${c.incluirInmueblesEnTotal?' checked':''}><span class="tr"></span><span class="th"></span></span></div>
       </fieldset>
       <fieldset>
-        <legend>Respaldo</legend>
+        <div class="legend">Respaldo</div>
         ${respaldoViejo ? '<div class="alert">Han pasado más de 30 días desde el último respaldo. Con un solo dispositivo como fuente de verdad, perder el teléfono o borrar datos de Safari borra todo el portafolio.</div>' : `<div class="tiny">Último respaldo: ${Fmt.fecha(c.ultimoExport)}</div>`}
         <div class="btn-row">
           <button class="btn sec" onclick="Ajustes.exportar()">Exportar JSON</button>
@@ -1636,7 +1729,7 @@ const UI = {
         <input type="file" id="aj-file" accept=".json,application/json" style="display:none">
       </fieldset>
       ${Store.data.instrumentos.some(i=>i.demo) || Store.data.inmuebles.some(i=>i.demo)
-        ? '<fieldset><legend>Demo</legend><button class="btn peligro" onclick="Demo.borrar()">Borrar datos DEMO</button></fieldset>' : ''}
+        ? '<fieldset><div class="legend">Demo</div><button class="btn peligro" onclick="Demo.borrar()">Borrar datos DEMO</button></fieldset>' : ''}
       <button class="btn" onclick="Ajustes.guardar()">Guardar ajustes</button>
       <div class="tiny" style="margin:14px 4px;text-align:center">Abreu Lantigua · datos solo en este dispositivo · v${Store.data.version}</div>
     `);
@@ -1733,8 +1826,10 @@ const Ficha = {
         <div class="kv"><span class="k">Titular / Moneda</span><span class="v">${i.titular} · ${i.moneda}</span></div>
         <div class="kv"><span class="k">Modalidad</span><span class="v">${modTxt}</span></div>
         <div class="kv"><span class="k">Capital</span><span class="v num">${Fmt.money(i.capital, i.moneda)}</span></div>
-        <div class="kv"><span class="k">Tasa nominal anual</span><span class="v num">${Fmt.pct(i.tasaNominalAnual)}</span></div>
-        ${esFondo ? `<div class="kv"><span class="k">Retención propia del fondo</span><span class="v num">${Fmt.pct(cv.ret,2)}</span></div>` : ''}
+        <div class="kv"><span class="k">${esFondo ? 'Tasa anual implícita' : 'Tasa nominal anual'}</span><span class="v num">${Fmt.pct(Calc.tasaEfectiva(i))}</span></div>
+        ${esFondo && i.gananciaVencimiento != null ? `
+        <div class="kv"><span class="k">Ganancia al vencimiento (declarada)</span><span class="v num">${Fmt.money(i.gananciaVencimiento, i.moneda)}</span></div>
+        <div class="kv"><span class="k">Prorrateo mensual aprox.</span><span class="v num">${Fmt.money(i.gananciaVencimiento / Math.max(1, Fecha.dias(i.fechaInicio, i.fechaVencimiento) / 30.44), i.moneda)}</span></div>` : ''}
         <div class="kv"><span class="k">Vigencia</span><span class="v num">${Fmt.fecha(i.fechaInicio)} → ${Fmt.fecha(i.fechaVencimiento)}</span></div>
         <div class="kv"><span class="k">Días al vencimiento</span><span class="v num">${diasV >= 0 ? diasV : 'Vencido'}${i.renovacionAutomatica ? ' · renueva' : ''}</span></div>
       </div>
@@ -1753,7 +1848,7 @@ const Ficha = {
         <div class="tiny" style="margin-top:8px">Convención: días reales / ${cv.base}, cortes en el día ${Fecha.parse(i.fechaInicio).getDate()} de cada mes.
         ${i.modalidad==='capitalizable_mensual' ? (cv.capNeto ? ' La retención se descuenta cada mes: solo capitaliza el interés neto.' : ' La retención se liquida al final: capitaliza el interés bruto.') : i.modalidad==='pago_mensual' ? ' El interés pagado sale del instrumento; el capital no crece.' : ' Devengo lineal, todo se liquida al vencimiento.'}
         El tramo desde el último corte es interés simple, no capitalizado.
-        ${esFondo ? ' Este fondo usa su retención propia en lugar de la retención general del 10%.' : ''}</div>
+        ${esFondo ? ' Se reparte la ganancia declarada en proporción a los días transcurridos; el monto del vencimiento es exacto y el del mes en curso es el prorrateo. La ganancia se toma como neta: no se le aplica retención.' : ''}</div>
       </div>
       <div class="card">
         <h3>Cronograma mes a mes</h3>
@@ -1867,7 +1962,7 @@ const Forms = {
     $('f-guardar').addEventListener('click', () => Forms.guardarFondo());
     $('i-guardar').addEventListener('click', () => Forms.guardarInmueble());
     ['c-capital','c-tasa','c-inicio','c-venc','c-modalidad'].forEach(id => $(id).addEventListener('input', () => Forms.previewCert()));
-    ['f-capital','f-tasa','f-inicio','f-venc','f-ret','f-base'].forEach(id => $(id).addEventListener('input', () => Forms.previewFondo()));
+    ['f-capital','f-ganancia','f-inicio','f-venc'].forEach(id => $(id).addEventListener('input', () => Forms.previewFondo()));
     ['i-renta','i-vac','i-g-mant','i-g-adm','i-g-seg','i-g-otros','i-ipi','i-rep','i-hip-cuota','i-vm','i-estado','i-hip'].forEach(id => $(id).addEventListener('input', () => Forms.previewInm()));
     $('i-hip').addEventListener('change', () => { $('i-bloque-hip').style.display = $('i-hip').checked ? 'block' : 'none'; Forms.previewInm(); });
     $('i-estado').addEventListener('change', () => { $('i-bloque-renta').style.display = $('i-estado').value === 'rentado' ? 'block' : 'none'; Forms.previewInm(); });
@@ -1943,30 +2038,28 @@ const Forms = {
   },
 
   previewFondo(){
-    const cap = Forms.num('f-capital'), tasa = Forms.num('f-tasa');
+    const cap = Forms.num('f-capital'), gan = Forms.num('f-ganancia');
     const ini = $('f-inicio').value, ven = $('f-venc').value;
     const box = $('f-preview');
-    if (cap === null || tasa === null || !ini || !ven || Fecha.dias(ini, ven) <= 0) { box.style.display = 'none'; return; }
-    const ret = Forms.num('f-ret');
-    const inst = { tipo:'fondo_mutuo', capital: cap, tasaNominalAnual: tasa/100, modalidad: 'pago_vencimiento',
-      baseDias: parseInt($('f-base').value, 10) || 365,
-      retencionISR: ret !== null ? ret/100 : 0.01,
+    if (cap === null || cap <= 0 || gan === null || !ini || !ven || Fecha.dias(ini, ven) <= 0) { box.style.display = 'none'; return; }
+    const inst = { tipo:'fondo_mutuo', capital: cap, gananciaVencimiento: gan,
       fechaInicio: ini, fechaVencimiento: ven, renovacionAutomatica: false };
-    const c = Calc.certificado(inst, ven);
+    const dias = Fecha.dias(ini, ven);
+    const meses = Math.max(1, dias / 30.44);
     const mon = $('f-moneda').value;
     box.style.display = 'block';
-    box.innerHTML = `Al vencimiento (${Fmt.fecha(ven)}): interés bruto <b class="num">${Fmt.money(c.interesBrutoTotal, mon)}</b>, neto de su retención <b class="num">${Fmt.money(c.interesNetoTotal, mon)}</b>. Valor final bruto: <b class="num">${Fmt.money(c.valor, mon)}</b>.`;
+    box.innerHTML = `Plazo de ${dias} días (${Fmt.num(meses,1)} meses). Prorrateo: <b class="num">${Fmt.money(gan/meses, mon)}</b> por mes. ` +
+      `Tasa anual implícita: <b class="num">${Fmt.pct(Calc.tasaEfectiva(inst))}</b>. Valor al vencimiento: <b class="num">${Fmt.money(cap + gan, mon)}</b>.`;
   },
 
   guardarFondo(){
     const err = $('f-err'); err.classList.remove('show');
-    const cap = Forms.num('f-capital'), tasa = Forms.num('f-tasa'), ret = Forms.num('f-ret');
+    const cap = Forms.num('f-capital'), gan = Forms.num('f-ganancia');
     const ini = $('f-inicio').value, ven = $('f-venc').value;
     const fallas = [];
     if (!$('f-nombre').value.trim()) fallas.push('Nombre obligatorio.');
     if (cap === null || cap <= 0) fallas.push('Capital debe ser mayor que 0.');
-    if (tasa === null || tasa <= 0 || tasa > 100) fallas.push('Tasa entre 0 y 100%.');
-    if (ret === null || ret < 0 || ret > 100) fallas.push('Retención propia entre 0 y 100%.');
+    if (gan === null || gan < 0) fallas.push('Ganancia al vencimiento debe ser 0 o mayor.');
     if (!ini || !ven) fallas.push('Fechas de inicio y vencimiento obligatorias.');
     else if (Fecha.dias(ini, ven) <= 0) fallas.push('El vencimiento debe ser posterior al inicio.');
     if (fallas.length) { err.textContent = fallas.join(' '); err.classList.add('show'); return; }
@@ -1978,14 +2071,16 @@ const Forms = {
       nombre: $('f-nombre').value.trim(),
       institucion: $('f-institucion').value.trim(),
       moneda: $('f-moneda').value, titular: $('f-titular').value,
-      capital: cap, tasaNominalAnual: tasa/100,
-      modalidad: 'pago_vencimiento',                 // el fondo siempre liquida al vencimiento
-      retencionISR: ret/100,                         // retención propia: sustituye el 10% general
-      baseDias: parseInt($('f-base').value, 10) || 365,
+      capital: cap,
+      gananciaVencimiento: gan,      // insumo declarado por el fondo
+      modalidad: 'pago_vencimiento', // el fondo siempre liquida al final
+      baseDias: 365,
       fechaInicio: ini, fechaVencimiento: ven,
       renovacionAutomatica: $('f-renov').checked,
       notas: $('f-notas').value.trim()
     });
+    delete inst.tasaNominalAnual;    // se deriva de la ganancia, no se guarda
+    delete inst.retencionISR;
     if (!base) Store.data.instrumentos.push(inst);
     Forms.finalizar('Fondo guardado.');
   },
@@ -2081,7 +2176,6 @@ const Forms = {
 
   limpiar(){
     document.querySelectorAll('#view-agregar input:not([type=checkbox]), #view-agregar textarea').forEach(i => i.value = '');
-    $('f-ret').value = '1.00'; // retención propia del fondo: supuesto por defecto, editable
     $('c-preview').style.display = 'none'; $('i-preview').style.display = 'none'; $('f-preview').style.display = 'none';
     document.querySelectorAll('#view-agregar .err').forEach(e => e.classList.remove('show'));
   },
@@ -2107,9 +2201,9 @@ const Forms = {
       Forms.claseActiva = 'financiero'; Forms.tipoFin = 'fondo_mutuo'; Forms.mostrarForm();
       $('f-nombre').value = i.nombre; $('f-institucion').value = i.institucion;
       $('f-moneda').value = i.moneda; $('f-titular').value = i.titular;
-      Miles.set('f-capital', i.capital); $('f-tasa').value = (i.tasaNominalAnual*100).toFixed(2);
-      $('f-base').value = String(i.baseDias || 365);
-      $('f-ret').value = ((i.retencionISR != null ? i.retencionISR : 0.01)*100).toFixed(2);
+      Miles.set('f-capital', i.capital);
+      Miles.set('f-ganancia', i.gananciaVencimiento != null ? i.gananciaVencimiento
+        : (i.capital || 0) * (i.tasaNominalAnual || 0) * Math.max(1, Fecha.dias(i.fechaInicio, i.fechaVencimiento)) / (i.baseDias || 365));
       $('f-inicio').value = i.fechaInicio; $('f-venc').value = i.fechaVencimiento;
       $('f-renov').checked = !!i.renovacionAutomatica;
       $('f-notas').value = i.notas || '';
@@ -2208,8 +2302,7 @@ const Informe = {
       const c = Calc.certificado(i, hoy);
       const valor = cfg.aplicarRetencion ? c.valorNeto : c.valor;
       const esFondo = i.tipo === 'fondo_mutuo';
-      const cv = Calc.convencion(i);
-      const tasa = Fmt.pct(i.tasaNominalAnual) + (esFondo ? ` (ret. ${Fmt.pct(cv.ret,2)})` : '');
+      const tasa = Fmt.pct(Calc.tasaEfectiva(i)) + (esFondo ? ' impl.' : '');
       return `<tr><td>${i.nombre}${esFondo ? ' (fondo)' : ''}</td><td>${i.institucion}</td><td>${i.titular}</td><td>${i.moneda}</td>
         <td class="num-r num">${Fmt.num(i.capital)}</td><td class="num-r num">${Fmt.num(valor)}</td>
         <td class="num-r num">${tasa}</td><td>${Fmt.fecha(i.fechaVencimiento)}</td></tr>`;
