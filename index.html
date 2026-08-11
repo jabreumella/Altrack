@@ -10,34 +10,43 @@
 <title>Abreu Lantigua — Patrimonio</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="libs/chart.umd.min.js"></script>
+<script src="libs/jspdf.umd.min.js"></script>
+<script src="libs/html2canvas.min.js"></script>
 <script>
-/* Cargador de respaldo. Si una librería del CDN no quedó definida (red
-   intermitente al abrir, o una entrada de caché servida con el tipo
-   equivocado), se reinyecta el script saltando la caché. Sin esto la app
-   se queda sin gráficos hasta borrarla del teléfono. */
+/* Cargador de respaldo. Las librerías viven en el propio repositorio (libs/):
+   mismo origen, sin depender de que el CDN responda desde el teléfono. Si aun
+   así alguna no quedó definida, se reintenta primero la copia local saltando
+   la caché y luego el CDN como última opción. */
 const Libs = {
   urls: {
-    Chart: 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
-    jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-    html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+    Chart: ['libs/chart.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js'],
+    jspdf: ['libs/jspdf.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'],
+    html2canvas: ['libs/html2canvas.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js']
   },
   pendientes: {},
   presente(n){ return n === 'jspdf' ? !!(window.jspdf && window.jspdf.jsPDF) : !!window[n]; },
+  inyectar(url){
+    return new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = url + (url.indexOf('?') < 0 ? '?r=' : '&r=') + Date.now(); // sortea la caché del SW
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+      setTimeout(() => resolve(false), 12000);
+    });
+  },
   cargar(n){
     if (Libs.presente(n)) return Promise.resolve(true);
     if (Libs.pendientes[n]) return Libs.pendientes[n];
-    Libs.pendientes[n] = new Promise((resolve) => {
-      const s = document.createElement('script');
-      s.src = Libs.urls[n] + '?r=' + Date.now(); // sortea la caché del SW
-      s.crossOrigin = 'anonymous';
-      s.onload = () => resolve(Libs.presente(n));
-      s.onerror = () => resolve(false);
-      document.head.appendChild(s);
-      setTimeout(() => resolve(Libs.presente(n)), 12000);
-    }).then((ok) => { delete Libs.pendientes[n]; return ok; });
+    Libs.pendientes[n] = (async () => {
+      for (const url of Libs.urls[n]) {
+        await Libs.inyectar(url);
+        if (Libs.presente(n)) break;
+      }
+      delete Libs.pendientes[n];
+      return Libs.presente(n);
+    })();
     return Libs.pendientes[n];
   }
 };
@@ -104,7 +113,7 @@ header.app .sub{font-size:11px;color:var(--gris);font-weight:400}
 .icon-btn:active{background:rgba(13,64,41,.08)}
 
 main{
-  padding:calc(var(--sat) + 72px) 14px calc(var(--sab) * .45 + 66px);
+  padding:calc(var(--sat) + 72px) 14px calc(max(8px, calc(var(--sab) - 20px)) + 60px);
   max-width:640px;margin:0 auto;
   width:100%;overflow-x:hidden;
 }
@@ -118,11 +127,11 @@ main{
 nav.tabbar{
   position:fixed;bottom:0;left:0;right:0;z-index:50;
   background:var(--menta);
-  display:flex;padding:2px 4px calc(var(--sab) * .45 + 4px);
+  display:flex;padding:2px 4px max(8px, calc(var(--sab) - 20px));
 }
 nav.tabbar button{
   flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;
-  min-height:44px;color:var(--gris);font-size:10px;font-weight:600;border-radius:12px;
+  min-height:40px;color:var(--gris);font-size:10px;font-weight:600;border-radius:12px;
   transition:color .2s;
 }
 nav.tabbar button .ic{font-size:18px;line-height:1}
@@ -345,18 +354,14 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
     <div id="avisos"></div>
 
     <div class="card hero-card">
-      <h3>Portafolio <button class="tt tiny" id="hero-info-btn" style="border-bottom:none">&#9432;</button></h3>
+      <h3>Portafolio de inversión <button class="tt tiny" id="hero-info-btn" style="border-bottom:none">&#9432;</button></h3>
       <div class="hero num" id="hero-total"></div>
-      <div class="delta-row num" id="hero-delta"></div>
+      <div class="small num" id="res-fin-rend"></div>
       <div class="hero-info" id="hero-info">
         <div class="tiny">Valor a hoy: capital más el rendimiento devengado a la fecha, no el de vencimiento.</div>
-        <div class="tiny" id="hero-nota-estimados">Incluye valores de mercado estimados por el usuario.</div>
+        <div class="tiny" id="hero-nota-estimados">El patrimonio total incluye valores de mercado estimados por el usuario.</div>
         <div class="tiny num" id="hero-tc" style="margin-top:4px"></div>
         <div class="tiny" id="hero-delta-nota" style="margin-top:4px"></div>
-      </div>
-      <div class="chips">
-        <span class="chip num" id="chip-dop"></span>
-        <span class="chip num" id="chip-usd"></span>
       </div>
     </div>
 
@@ -394,16 +399,18 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
       </div>
     </div>
 
-    <div class="card">
-      <h3>Portafolio de inversión</h3>
-      <div class="num" style="font-size:clamp(20px,6.6vw,28px);font-weight:700" id="res-fin-valor"></div>
-      <div class="small num" id="res-fin-rend"></div>
+    <div class="card" id="card-portafolio-dona">
+      <h3>Portafolio</h3>
+      <div class="chart-box pie" id="dona-box"><canvas id="pie-portafolio"></canvas></div>
+      <div class="chips">
+        <span class="chip num" id="chip-dop"></span>
+        <span class="chip num" id="chip-usd"></span>
+      </div>
       <div class="small num" id="res-inm-rend" style="margin-top:6px"></div>
     </div>
 
     <div class="grid2" id="bloque-pies">
-      <div class="card"><h3>Por moneda</h3><div class="chart-box pie"><canvas id="pie-moneda"></canvas></div></div>
-      <div class="card"><h3>Por clase de activo</h3><div class="chart-box pie"><canvas id="pie-clase"></canvas></div></div>
+      <div class="card" style="grid-column:1 / -1"><h3>Por clase de activo</h3><div class="chart-box pie"><canvas id="pie-clase"></canvas></div></div>
     </div>
     <div class="card" id="card-pie3">
       <div class="seg" id="seg-pie3">
@@ -448,7 +455,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
       </div>
       <div id="sel-tipo-fin" class="seg">
         <button data-tf="certificado" class="active">Certificado</button>
-        <button data-tf="fondo_mutuo">Fondo mutuo</button>
+        <button data-tf="fondo_mutuo">Mutuo estructurado</button>
       </div>
     </div>
 
@@ -491,12 +498,12 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
       </fieldset>
     </div>
 
-    <!-- Fondo mutuo: renta fija con ganancia conocida y pago al vencimiento -->
+    <!-- Mutuo estructurado: renta fija con ganancia conocida y pago al vencimiento -->
     <div class="form-block" id="form-fondo">
       <fieldset>
-        <div class="legend">Fondo mutuo / de inversión</div>
+        <div class="legend">Mutuo estructurado</div>
         <div class="tiny" style="margin-top:6px">Renta fija con <b>pago al vencimiento</b>. Como ya conoces la ganancia total del plazo, se captura ese monto y la app lo reparte día a día: el prorrateo del mes en curso entra en <b>Rendimiento del mes</b>.</div>
-        <label>Nombre</label><input id="f-nombre" placeholder="Fondo Renta Fija USD">
+        <label>Nombre</label><input id="f-nombre" placeholder="Mutuo Renta Fija USD">
         <label>Institución (AFI / SAFI)</label><input id="f-institucion" placeholder="AFI Universal">
         <div class="fila2">
           <div><label>Moneda</label><select id="f-moneda"><option>DOP</option><option>USD</option></select></div>
@@ -504,7 +511,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
         </div>
         <label>Capital</label><input id="f-capital" inputmode="decimal" data-miles placeholder="500000">
         <label>Ganancia al vencimiento</label><input id="f-ganancia" inputmode="decimal" data-miles placeholder="48750">
-        <div class="tiny">El monto total que recibirás por encima del capital, tal como lo indica el fondo. Se asume neto: no se le aplica la retención del 10%.</div>
+        <div class="tiny">El monto total que recibirás por encima del capital, tal como lo indica el mutuo. Se asume neto: no se le aplica la retención del 10%.</div>
         <div class="fila2">
           <div><label>Fecha inicio</label><input id="f-inicio" type="date"></div>
           <div><label>Fecha vencimiento</label><input id="f-venc" type="date"></div>
@@ -513,7 +520,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
         <label>Notas</label><textarea id="f-notas" rows="2"></textarea>
         <div class="preview" id="f-preview" style="display:none"></div>
         <div class="err" id="f-err"></div>
-        <div class="btn-row"><button class="btn" id="f-guardar">Guardar fondo</button></div>
+        <div class="btn-row"><button class="btn" id="f-guardar">Guardar mutuo</button></div>
       </fieldset>
     </div>
 
@@ -1395,27 +1402,24 @@ const UI = {
     // El recordatorio de respaldo vive solo en Ajustes (spec §6.5), no en el home.
     $('avisos').innerHTML = avisos.map(a => `<div class="alert">${a}</div>`).join('');
 
-    // Héroe
-    const totalMostrar = cfg.incluirInmueblesEnTotal ? t.totalBase : t.finBase;
-    const txtTotal = Fmt.num(totalMostrar);
+    // Héroe: portafolio de inversión (financiero). El patrimonio total con
+    // inmuebles se informa en la tarjeta Portafolio y en la nota del ⓘ.
+    const txtTotal = Fmt.num(t.finBase);
     $('hero-total').innerHTML = `<span class="cur">${Fmt.simbolo(base)}</span>${txtTotal}`;
     $('hero-total').classList.toggle('larga', txtTotal.length > 12); // p. ej. 12,345,678.00
     $('hero-nota-estimados').style.display = cfg.incluirInmueblesEnTotal && Store.data.inmuebles.length ? 'block' : 'none';
+    $('res-fin-rend').innerHTML = t.capitalAportado > 0
+      ? `<span class="${t.rendNeto>=0?'delta-pos':'delta-neg'}">${t.rendNeto>=0?'+':''}${Fmt.money(cfg.aplicarRetencion?t.rendNeto:t.rendBruto, base)} (${Fmt.pct((cfg.aplicarRetencion?t.rendNeto:t.rendBruto)/t.capitalAportado)})</span> <span class="tiny">sobre ${Fmt.money(t.capitalAportado, base)} aportados</span>`
+      : '<span class="tiny">Aún no hay instrumentos registrados</span>';
 
-    // Variación del mes vs snapshot más cercano al inicio del mes: píldora estilo broker
+    // Variación del mes vs snapshot más cercano al inicio del mes (nota del ⓘ)
+    const totalMostrar = cfg.incluirInmueblesEnTotal ? t.totalBase : t.finBase;
     const d = new Date(); const iniMes = Fecha.iso(new Date(d.getFullYear(), d.getMonth(), 1, 12));
     const snapMes = Store.data.snapshots.filter(s => s.fecha <= iniMes).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
     if (snapMes) {
       const dif = totalMostrar - snapMes.valorBase;
-      const pct = snapMes.valorBase > 0 ? dif / snapMes.valorBase : 0;
-      const neg = dif < 0;
-      $('hero-delta').innerHTML =
-        `<span class="${neg?'delta-neg':'delta-pos'}">${neg?'':'+'} ${Fmt.money(dif, base)}</span>` +
-        `<span class="delta-pill${neg?' neg':''}">${neg?'&#8595;':'&#8593;'} ${Fmt.pct(Math.abs(pct))}</span>`;
-      $('hero-delta').style.display = 'flex';
-      $('hero-delta-nota').textContent = `Variación del mes vs snapshot del ${Fmt.fecha(snapMes.fecha)}.`;
+      $('hero-delta-nota').textContent = `Variación del patrimonio en el mes: ${dif>=0?'+':''}${Fmt.money(dif, base)} vs snapshot del ${Fmt.fecha(snapMes.fecha)}.`;
     } else {
-      $('hero-delta').style.display = 'none';
       $('hero-delta-nota').textContent = 'La variación mensual aparecerá con el primer snapshot de un mes previo.';
     }
 
@@ -1423,14 +1427,10 @@ const UI = {
     $('chip-usd').textContent = `USD ${Fmt.money(t.finUSD + (cfg.incluirInmueblesEnTotal ? Store.data.inmuebles.filter(i=>i.moneda==='USD').reduce((s,i)=>s+Calc.inmueble(i).equity,0) : 0), 'USD')}`;
     $('hero-tc').textContent = `Tasa de cambio: ${Fmt.num(cfg.tasaCambio)} DOP/USD (${Fmt.fecha(cfg.tasaCambioFecha)}) — edición manual`;
 
-    // Tarjeta de portafolio de inversión (el equity inmobiliario vive en Portafolio, no aquí)
+    // Tarjeta Portafolio (anillo por moneda): línea de patrimonio total e inmuebles
     const hayInm = Store.data.inmuebles.length > 0;
-    $('res-fin-valor').textContent = Fmt.money(t.finBase, base);
-    $('res-fin-rend').innerHTML = t.capitalAportado > 0
-      ? `<span class="${t.rendNeto>=0?'delta-pos':'delta-neg'}">${t.rendNeto>=0?'+':''}${Fmt.money(cfg.aplicarRetencion?t.rendNeto:t.rendBruto, base)} (${Fmt.pct((cfg.aplicarRetencion?t.rendNeto:t.rendBruto)/t.capitalAportado)})</span> <span class="tiny">sobre ${Fmt.money(t.capitalAportado, base)} aportados</span>`
-      : '<span class="tiny">Aún no hay instrumentos registrados</span>';
     $('res-inm-rend').innerHTML = hayInm
-      ? `<span class="tiny">Inmuebles — equity </span><span class="num">${Fmt.money(t.inmEquityBase, base)}</span><span class="tiny"> · flujo neto anual </span><span class="num">${Fmt.money(t.inmFlujoAnual, base)}</span>`
+      ? `<span class="tiny">Patrimonio total </span><span class="num">${Fmt.money(totalMostrar, base)}</span><span class="tiny"> · equity inmobiliario </span><span class="num">${Fmt.money(t.inmEquityBase, base)}</span><span class="tiny"> · flujo neto anual </span><span class="num">${Fmt.money(t.inmFlujoAnual, base)}</span>`
       : '';
     $('m-row-cap').style.display = hayInm ? '' : 'none';
     $('m-row-coc').style.display = hayInm ? '' : 'none';
@@ -1494,7 +1494,7 @@ const UI = {
       if (!hayActivos) {
         vacio.innerHTML = 'Aún no hay activos registrados. Agrega tu primer certificado o inmueble y aquí verás la evolución del portafolio.';
       } else {
-        vacio.innerHTML = '<div>Cargando la librería de gráficos…<div style="margin-top:10px"><button class="btn sec mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
+        vacio.innerHTML = '<div>Cargando la librería de gráficos…<div style="margin-top:10px"><button class="btn mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
         UI.reintentarGraficos(); // reinyecta el script y redibuja si lo logra
       }
       return;
@@ -1562,40 +1562,49 @@ const UI = {
     // Sin activos los pasteles quedan en blanco: mejor no ocupar pantalla.
     const hayActivos = Store.data.instrumentos.length > 0 || Store.data.inmuebles.length > 0;
     const puede = hayActivos && typeof Chart !== 'undefined';
-    const bp = $('bloque-pies'), cp = $('card-pie3');
+    const bp = $('bloque-pies'), cp = $('card-pie3'), dbox = $('dona-box');
     if (bp) bp.style.display = puede ? '' : 'none';
     if (cp) cp.style.display = puede ? '' : 'none';
+    if (dbox) dbox.style.display = puede ? '' : 'none';
     if (!puede) return;
     const push = (map, k, v) => map.set(k, (map.get(k) || 0) + v);
     const porMoneda = new Map(), porClase = new Map(), porTres = new Map();
+    const nativo = { DOP: 0, USD: 0 }; // montos en su propia moneda, para la leyenda del anillo
     for (const i of Store.data.instrumentos) {
-      const v = Calc.aBase(Calc.valorInstrumento(i, Fecha.hoy()), i.moneda);
+      const vNat = Calc.valorInstrumento(i, Fecha.hoy());
+      const v = Calc.aBase(vNat, i.moneda);
+      nativo[i.moneda] += vNat;
       push(porMoneda, i.moneda, v);
       push(porClase, 'Financiero', v);
       push(porTres, UI.pie3 === 'institucion' ? (i.institucion || 'Sin institución')
-                  : UI.pie3 === 'tipo' ? (i.tipo === 'certificado' ? 'Certificados' : 'Fondos mutuos')
+                  : UI.pie3 === 'tipo' ? (i.tipo === 'certificado' ? 'Certificados' : 'Mutuos estructurados')
                   : i.titular, v);
     }
     for (const im of Store.data.inmuebles) {
-      const v = Calc.aBase(Calc.inmueble(im).equity, im.moneda);
+      const eq = Calc.inmueble(im).equity;
+      const v = Calc.aBase(eq, im.moneda);
+      if (cfg.incluirInmueblesEnTotal) nativo[im.moneda] += eq;
       push(porMoneda, im.moneda, v);
       push(porClase, 'Inmobiliario (equity)', v);
       push(porTres, UI.pie3 === 'institucion' ? 'Inmuebles' : UI.pie3 === 'tipo' ? 'Inmuebles' : im.titular, v);
     }
-    const pie = (id, map) => {
+    const pie = (id, map, etiquetas) => {
       const labels = [...map.keys()], data = [...map.values()];
       UI.chart(id, {
         type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: PALETA, borderWidth: 0 }] },
+        data: { labels: etiquetas || labels, datasets: [{ data, backgroundColor: PALETA, borderWidth: 0 }] },
         options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
           plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
             tooltip: { callbacks: { label: c => {
               const tot = data.reduce((s,x)=>s+x,0);
-              return ` ${c.label}: ${Fmt.money(c.parsed, cfg.monedaBase)} (${Fmt.pct(tot? c.parsed/tot : 0,1)})`;
+              return ` ${labels[c.dataIndex]}: ${Fmt.money(c.parsed, cfg.monedaBase)} (${Fmt.pct(tot? c.parsed/tot : 0,1)})`;
             } } } } }
       });
     };
-    pie('pie-moneda', porMoneda); pie('pie-clase', porClase); pie('pie-tres', porTres);
+    // Anillo del Portafolio: proporción convertida a base, leyenda con el monto nativo
+    const etiqMoneda = [...porMoneda.keys()].map(m => `${m} · ${Fmt.money(nativo[m] || 0, m)}`);
+    pie('pie-portafolio', porMoneda, etiqMoneda);
+    pie('pie-clase', porClase); pie('pie-tres', porTres);
   },
 
   chart(id, config){
@@ -1613,7 +1622,7 @@ const UI = {
       UI.cargandoChart = false;
       if (ok) { UI.dibujarLinea(); UI.dibujarPies(); return; }
       const v = $('chart-linea-vacio');
-      if (v) v.innerHTML = '<div>No se pudo cargar la librería de gráficos. Verifica la conexión.<div style="margin-top:10px"><button class="btn sec mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
+      if (v) v.innerHTML = '<div>No se pudo cargar la librería de gráficos. Verifica la conexión.<div style="margin-top:10px"><button class="btn mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
     });
   },
 
@@ -1641,7 +1650,7 @@ const UI = {
       const rendTxt = Fmt.pct(rend);
       const tot = Math.max(1, Fecha.dias(i.fechaInicio, i.fechaVencimiento));
       const prog = Math.min(100, Math.max(0, 100 * Fecha.dias(i.fechaInicio, Fecha.hoy()) / tot));
-      const etiqueta = i.tipo === 'fondo_mutuo' ? ' · fondo' : '';
+      const etiqueta = i.tipo === 'fondo_mutuo' ? ' · mutuo' : '';
       const sub = `${i.institucion} · ${Fmt.pct(Calc.tasaEfectiva(i))}${etiqueta} · vence ${Fmt.fecha(i.fechaVencimiento)} <b>${UI.iniciales(i.titular)}</b>`;
       return `<button class="row-inst" onclick="Ficha.instrumento('${i.id}')">
         <div class="row-top"><span class="nm">${i.nombre}</span><span class="val num">${Fmt.money(val, i.moneda)}</span></div>
@@ -1820,7 +1829,7 @@ const Ficha = {
     }
     const modTxt = { capitalizable_mensual: 'Capitalizable mensual', pago_mensual: 'Pago mensual', pago_vencimiento: 'Pago al vencimiento' }[i.modalidad];
     const diasV = Fecha.dias(Fecha.hoy(), i.fechaVencimiento);
-    UI.abrirSheet(i.nombre + (esFondo ? ' <span class="badge estimado">Fondo</span>' : ''), `
+    UI.abrirSheet(i.nombre + (esFondo ? ' <span class="badge estimado">Mutuo</span>' : ''), `
       <div class="card">
         <div class="kv"><span class="k">Institución</span><span class="v">${i.institucion}</span></div>
         <div class="kv"><span class="k">Titular / Moneda</span><span class="v">${i.titular} · ${i.moneda}</span></div>
@@ -2082,7 +2091,7 @@ const Forms = {
     delete inst.tasaNominalAnual;    // se deriva de la ganancia, no se guarda
     delete inst.retencionISR;
     if (!base) Store.data.instrumentos.push(inst);
-    Forms.finalizar('Fondo guardado.');
+    Forms.finalizar('Mutuo guardado.');
   },
 
   leerInmueble(validar){
@@ -2303,7 +2312,7 @@ const Informe = {
       const valor = cfg.aplicarRetencion ? c.valorNeto : c.valor;
       const esFondo = i.tipo === 'fondo_mutuo';
       const tasa = Fmt.pct(Calc.tasaEfectiva(i)) + (esFondo ? ' impl.' : '');
-      return `<tr><td>${i.nombre}${esFondo ? ' (fondo)' : ''}</td><td>${i.institucion}</td><td>${i.titular}</td><td>${i.moneda}</td>
+      return `<tr><td>${i.nombre}${esFondo ? ' (mutuo)' : ''}</td><td>${i.institucion}</td><td>${i.titular}</td><td>${i.moneda}</td>
         <td class="num-r num">${Fmt.num(i.capital)}</td><td class="num-r num">${Fmt.num(valor)}</td>
         <td class="num-r num">${tasa}</td><td>${Fmt.fecha(i.fechaVencimiento)}</td></tr>`;
     }).join('');
@@ -2364,7 +2373,7 @@ const Informe = {
     $('pdf-p2').innerHTML = p2;
     // Insertar los pasteles como imágenes desde los canvas ya dibujados
     try {
-      const map = { 'pdf-pie-1': 'pie-moneda', 'pdf-pie-2': 'pie-clase', 'pdf-pie-3': 'pie-tres' };
+      const map = { 'pdf-pie-1': 'pie-portafolio', 'pdf-pie-2': 'pie-clase', 'pdf-pie-3': 'pie-tres' };
       for (const k in map) {
         const img = $(k), cv = $(map[k]);
         if (img && cv && UI.charts[map[k]]) img.src = cv.toDataURL('image/png');
@@ -2383,6 +2392,10 @@ const Informe = {
     const msg = $('informe-msg');
     msg.textContent = 'Generando PDF…';
     try {
+      // Garantizar las librerías antes de tocar el DOM del informe
+      const okPdf = await Libs.cargar('jspdf');
+      const okH2c = await Libs.cargar('html2canvas');
+      if (!okPdf || !okH2c) { msg.textContent = 'No se pudieron cargar las librerías del PDF. Verifica la conexión e inténtalo de nuevo.'; return; }
       Informe.construirHTML();
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit: 'pt', format: 'letter' }); // 612×792pt

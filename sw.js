@@ -5,16 +5,16 @@
      se sirve la última copia cacheada y la app abre igual.
    - Las librerías de CDN y los íconos van "caché primero": no cambian.
    Sin llamadas de red adicionales: solo se cachea lo que la app ya pide. */
-const CACHE = 'abreu-lantigua-v6';
+const CACHE = 'abreu-lantigua-v7';
 const SHELL = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+  './libs/chart.umd.min.js',
+  './libs/jspdf.umd.min.js',
+  './libs/html2canvas.min.js'
 ];
 
 self.addEventListener('install', (e) => {
