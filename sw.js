@@ -5,7 +5,7 @@
      se sirve la última copia cacheada y la app abre igual.
    - Las librerías de CDN y los íconos van "caché primero": no cambian.
    Sin llamadas de red adicionales: solo se cachea lo que la app ya pide. */
-const CACHE = 'abreu-lantigua-v7';
+const CACHE = 'abreu-lantigua-v8';
 const SHELL = [
   './',
   './index.html',
