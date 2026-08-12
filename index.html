@@ -739,8 +739,16 @@ const Fecha = {
     return Math.round((Fecha.parse(b) - Fecha.parse(a)) / 86400000);
   },
   addMeses(iso, n){
+    // Aniversario mensual con recorte a fin de mes. Si el día de origen no existe
+    // en el mes destino (p. ej. "31 de septiembre"), se usa el último día del mes.
+    // Sin esto, setMonth desborda al mes siguiente en silencio ("31 sep" -> "1 oct"),
+    // y ese corte fantasma se saltaba septiembre y descuadraba el cronograma.
     const d = Fecha.parse(iso);
+    const diaObjetivo = d.getDate();
+    d.setDate(1);                                    // ancla segura antes de mover el mes
     d.setMonth(d.getMonth() + n);
+    const ultimoDiaMes = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(diaObjetivo, ultimoDiaMes));  // recorta al último día si el mes es más corto
     return Fecha.iso(d);
   },
   /* Meses completos transcurridos + fracción (días residuales / 30), según spec */
@@ -1844,6 +1852,26 @@ const Ficha = {
         <td class="num">${Fmt.num(p.retencion)}</td>
         <td class="num">${Fmt.num(i.modalidad === 'pago_mensual' ? i.capital : p.saldo)}</td></tr>`;
     }
+    // Tramo final hasta el vencimiento: período parcial que no cae en un aniversario
+    // mensual (aquí, del último corte al día del vencimiento). Es el mismo "interés no
+    // pagado" del cierre; sin esta fila, la suma del cronograma no llega a la ganancia
+    // declarada porque le falta justamente ese pedazo.
+    if (cron.diasStub > 0) {
+      const capitaliza = i.modalidad === 'capitalizable_mensual';
+      const iStub = cron.devengadoNoPagado;
+      const rStub = (capitaliza && !cv.capNeto) ? 0 : iStub * cv.ret;
+      const sStub = i.modalidad === 'pago_mensual' ? i.capital
+                  : (capitaliza ? cron.saldoCapitalizado : i.capital);
+      acum += iStub;
+      const ultCorte = cron.periodos.length ? cron.periodos[cron.periodos.length - 1].fecha : i.fechaInicio;
+      const esHoyStub = Fecha.dias(hoyISO, i.fechaVencimiento) >= 0 &&
+                        Fecha.dias(ultCorte, hoyISO) >= 0;
+      filas += `<tr${esHoyStub ? ' class="hoy"' : ''}><td>${Fmt.fechaCorta(i.fechaVencimiento)}</td>
+        <td class="num">${cron.diasStub}</td>
+        <td class="num">${Fmt.num(iStub)}</td>
+        <td class="num">${Fmt.num(rStub)}</td>
+        <td class="num">${Fmt.num(sStub)}</td></tr>`;
+    }
     const modTxt = { capitalizable_mensual: 'Capitalizable mensual', pago_mensual: 'Pago mensual', pago_vencimiento: 'Pago al vencimiento' }[i.modalidad];
     const diasV = Fecha.dias(Fecha.hoy(), i.fechaVencimiento);
     UI.abrirSheet(i.nombre + (esFondo ? ' <span class="badge estimado">Mutuo</span>' : ''), `
@@ -1871,7 +1899,7 @@ const Ficha = {
         <div class="kv"><span class="k">Interés bruto ganado a la fecha</span><span class="v num">${Fmt.money(c.interesBrutoTotal, i.moneda)}</span></div>
         <div class="kv"><span class="k">Retención ya practicada</span><span class="v num">${Fmt.money(c.retenidoAcumulado, i.moneda)}</span></div>
         <div class="kv"><span class="k">Interés neto <span class="tiny">(retención ${Fmt.pct(cv.ret,2)})</span></span><span class="v num">${Fmt.money(c.interesNetoTotal, i.moneda)}</span></div>
-        <div class="tiny" style="margin-top:8px">Convención: días reales / ${cv.base}, cortes en el día ${Fecha.parse(i.fechaInicio).getDate()} de cada mes.
+        <div class="tiny" style="margin-top:8px">Convención: días reales / ${cv.base}, cortes en el aniversario mensual del inicio (día ${Fecha.parse(i.fechaInicio).getDate()}); en meses más cortos que ese día, el corte se mueve al último día del mes.
         ${i.modalidad==='capitalizable_mensual' ? (cv.capNeto ? ' La retención se descuenta cada mes: solo capitaliza el interés neto.' : ' La retención se liquida al final: capitaliza el interés bruto.') : i.modalidad==='pago_mensual' ? ' El interés pagado sale del instrumento; el capital no crece.' : ' Devengo lineal, todo se liquida al vencimiento.'}
         El tramo desde el último corte es interés simple, no capitalizado.
         ${esFondo ? ' Se reparte la ganancia declarada en proporción a los días transcurridos; el monto del vencimiento es exacto y el del mes en curso es el prorrateo. La ganancia se toma como neta: no se le aplica retención.' : ''}</div>
