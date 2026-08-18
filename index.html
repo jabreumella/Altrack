@@ -171,6 +171,22 @@ nav.tabbar button.active{color:var(--verde)}
 .badge.ambar{background:rgba(217,139,13,.14);color:var(--ambar)}
 .badge.estimado{background:rgba(13,64,41,.08);color:var(--bosque)}
 .alert{background:rgba(217,139,13,.1);border-left:3px solid var(--ambar);border-radius:10px;padding:10px 12px;font-size:13px;color:#8a5a09;margin-bottom:8px}
+
+/* ---- Fase 7: modo consulta (réplica de solo lectura) ---- */
+.banner-consulta{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:rgba(30,198,119,.13);border-radius:12px;padding:9px 12px;
+  font-size:12px;line-height:1.35;color:var(--bosque);margin-bottom:10px;
+}
+.banner-consulta.viejo{background:rgba(217,139,13,.15);color:#8a5a09}
+.banner-consulta .txt{min-width:0}
+.banner-consulta .txt b{font-weight:700}
+.banner-consulta button{
+  flex-shrink:0;min-height:32px;padding:0 12px;border-radius:10px;
+  background:rgba(13,64,41,.08);color:inherit;font-size:12px;font-weight:600;
+}
+/* Todo lo que escribe datos se OCULTA (no se deshabilita en gris) en modo consulta. */
+body.consulta .solo-editor{display:none!important}
 .btn{
   display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
   min-height:48px;border-radius:14px;font-weight:700;font-size:16px;
@@ -349,6 +365,9 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 </header>
 
 <main>
+
+<!-- Banner de modo consulta: visible en todas las pestañas -->
+<div id="banner-consulta" class="banner-consulta" style="display:none"></div>
 
   <!-- ============ RESUMEN ============ -->
   <section class="view active" id="view-resumen">
@@ -627,7 +646,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 <nav class="tabbar">
   <button data-v="resumen" class="active"><span class="ic">&#8962;</span>Resumen</button>
   <button data-v="portafolio"><span class="ic">&#9776;</span>Portafolio</button>
-  <button data-v="agregar"><span class="ic">&#65291;</span>Agregar</button>
+  <button data-v="agregar" id="tab-agregar"><span class="ic">&#65291;</span>Agregar</button>
   <button data-v="informe"><span class="ic">&#128196;</span>Informe</button>
 </nav>
 
@@ -766,7 +785,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 7,
+  version: 8,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -784,7 +803,12 @@ const DEFAULT_DATA = () => ({
     incluirInmueblesEnTotal: true,
     isrAlquilerEfectivo: 0.10,
     aplicarIsrAlquiler: true,
-    ultimoExport: null
+    ultimoExport: null,
+    /* Fase 7 — publicación cifrada para la réplica de consulta de Lidia.
+       Vive en config para que el respaldo JSON conserve el enlace: si se pierde
+       el teléfono, restaurar el respaldo mantiene vivo el enlace de Lidia.
+       NUNCA viaja dentro del blob publicado (se elimina en Publicacion.payload). */
+    publicacion: { url: '', id: null, clave: null, token: '', publicadoEn: null }
   },
   titulares: ['Juan José', 'Massi', 'Conjunto'],
   instrumentos: [],
@@ -796,6 +820,9 @@ const Store = {
   KEY: 'patrimonio_v1',
   data: null,
   memOnly: false,
+  /* En modo consulta el Store es una vitrina: se lee, no se escribe. Un solo
+     interruptor evita tener que auditar cada llamada a save() por separado. */
+  soloLectura: false,
   lsOk(){
     try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return true; }
     catch(e){ return false; }
@@ -910,12 +937,23 @@ const Store = {
       d.version = 7;
     }
 
+    if (d.version < 8) {
+      // Fase 7: bloque de publicación cifrada. No toca ningún dato existente:
+      // solo agrega la caja donde viven el destino, el id, la llave y el token.
+      d.config.publicacion = Object.assign(
+        { url: '', id: null, clave: null, token: '', publicadoEn: null },
+        d.config.publicacion || {}
+      );
+      d.version = 8;
+    }
+
     d.titulares = d.titulares || base.titulares.slice();
     return d;
   },
 
   /* Único punto de escritura: aquí y solo aquí se sella meta.actualizadoEn. */
   save(){
+    if (this.soloLectura) return;   // réplica de consulta: nada se persiste aquí
     this.data.meta.actualizadoEn = new Date().toISOString();
     if (this.memOnly) return;
     try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch(e){}
@@ -1350,6 +1388,8 @@ const UI = {
   },
 
   init(){
+    // Modo consulta: la app se convierte en vitrina antes de pintar nada.
+    UI.aplicarModo();
     // Tabs
     document.querySelectorAll('nav.tabbar button').forEach(b => {
       b.addEventListener('click', () => UI.irA(b.dataset.v));
@@ -1376,6 +1416,42 @@ const UI = {
     $('hdr-fecha').textContent = new Date().toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long' });
     $('btn-compartir').addEventListener('click', () => Informe.compartir());
     UI.renderTodo();
+  },
+
+  /* ---------- Modo consulta ---------- */
+  /* Un solo lugar decide qué se ve: la clase del body oculta todo lo marcado
+     como .solo-editor y la pestaña Agregar desaparece de la barra. */
+  aplicarModo(){
+    const c = Modo.consulta();
+    document.body.classList.toggle('consulta', c);
+    const tab = $('tab-agregar');
+    if (tab) tab.style.display = c ? 'none' : '';
+    if (c && UI.vista === 'agregar') UI.irA('resumen');
+    UI.renderBanner();
+  },
+
+  /* Banner permanente con la fecha del dato. Ámbar si pasa de 7 días: en una
+     réplica, un dato viejo que se ve nuevo es peor que no ver nada. */
+  renderBanner(){
+    const el = $('banner-consulta');
+    if (!el) return;
+    if (!Modo.consulta()) { el.style.display = 'none'; return; }
+    const iso = Store.data.meta && Store.data.meta.actualizadoEn;
+    const dias = iso ? Fecha.dias(iso.slice(0, 10), Fecha.hoy()) : 999;
+    const vinculado = !!Consulta.cfg;
+    let txt;
+    if (!iso || (!vinculado && !Store.data.instrumentos.length && !Store.data.inmuebles.length)) {
+      txt = '<b>Modo consulta.</b> Aún no hay datos recibidos.';
+    } else {
+      const f = new Date(iso).toLocaleString('es-DO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      txt = `<b>Datos al ${f}</b>` + (dias > 7 ? ` · ${dias} días sin actualizar` : '');
+    }
+    const est = { sincronizando: 'Buscando…', offline: 'Sin conexión — mostrando la última copia', clave: 'El enlace no corresponde a estos datos', vacio: 'Todavía no se ha publicado nada' }[Consulta.estado];
+    if (est) txt += ` · <span class="tiny">${est}</span>`;
+    el.className = 'banner-consulta' + (dias > 7 ? ' viejo' : '');
+    el.innerHTML = `<span class="txt">${txt}</span>` +
+      (vinculado ? '<button onclick="Consulta.refrescar()">Actualizar</button>' : '');
+    el.style.display = 'flex';
   },
 
   segmento(id, attr, cb){
@@ -1725,7 +1801,9 @@ const UI = {
 
   /* ---------- Ajustes ---------- */
   abrirAjustes(){
+    if (Modo.consulta()) return UI.abrirAjustesConsulta();
     const c = Store.data.config;
+    const p = Publicacion.cfg();
     const respaldoViejo = c.ultimoExport === null || Fecha.dias(c.ultimoExport, Fecha.hoy()) > 30;
     UI.abrirSheet('Ajustes', `
       <fieldset>
@@ -1762,16 +1840,67 @@ const UI = {
         </div>
         <input type="file" id="aj-file" accept=".json,application/json" style="display:none">
       </fieldset>
+      <fieldset>
+        <div class="legend">Publicar para Lidia</div>
+        <div class="tiny" style="margin-bottom:8px">Los datos se cifran en este iPhone (AES-GCM) antes de salir. El servidor guarda un bloque ilegible; la llave viaja solo en el fragmento (#) del enlace, que el navegador nunca envía al servidor.</div>
+        <label>URL del Worker</label>
+        <input id="aj-pub-url" placeholder="https://al-publicar.tu-cuenta.workers.dev" value="${p.url || ''}" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <label>Token de publicación</label>
+        <input id="aj-pub-token" type="password" placeholder="El que pusiste como secreto en Cloudflare" value="${p.token || ''}" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <div class="tiny" style="margin-top:6px">El token solo permite sobrescribir tu propio bloque. No da acceso a leerlo en claro: sin la llave del enlace, lo publicado no se puede descifrar.</div>
+        <div class="kv" style="margin-top:10px"><span class="k">Última publicación</span><span class="v num">${p.publicadoEn ? new Date(p.publicadoEn).toLocaleString('es-DO', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Nunca'}</span></div>
+        ${p.publicadoEn && Fecha.dias(p.publicadoEn.slice(0,10), Fecha.hoy()) > 7 ? `<div class="alert">Lidia está viendo datos de hace ${Fecha.dias(p.publicadoEn.slice(0,10), Fecha.hoy())} días. Publica de nuevo para ponerla al día.</div>` : ''}
+        <div class="btn-row">
+          <button class="btn" onclick="Publicacion.publicarDesdeAjustes()">Publicar ahora</button>
+          <button class="btn sec" onclick="Publicacion.compartirEnlace()">Enviar enlace</button>
+        </div>
+        <button class="btn sec" onclick="Publicacion.regenerar()" style="margin-top:8px">Regenerar enlace de acceso</button>
+        <div class="tiny" style="margin-top:6px">Regenerar crea un id y una llave nuevos: el enlace anterior deja de servir. Úsalo si el enlace se filtró o si Lidia cambia de teléfono.</div>
+        <div class="tiny" id="aj-pub-msg" style="margin-top:8px"></div>
+      </fieldset>
+      <fieldset>
+        <div class="legend">Modo consulta</div>
+        <div class="tiny" style="margin-bottom:8px">Convierte este dispositivo en réplica de solo lectura: oculta Agregar y todos los botones que escriben.</div>
+        <button class="btn sec" onclick="Consulta.vincularPegando()">Vincular con un enlace de Lidia</button>
+        <div class="switch-row" style="margin-top:10px"><span>Modo consulta (prueba local)</span><span class="switch"><input type="checkbox" id="aj-consulta" onchange="Consulta.pruebaLocal(this.checked)"><span class="tr"></span><span class="th"></span></span></div>
+        <div class="tiny">La prueba local no borra nada: se apaga desde la misma pantalla de Ajustes.</div>
+      </fieldset>
       ${Store.data.instrumentos.some(i=>i.demo) || Store.data.inmuebles.some(i=>i.demo)
         ? '<fieldset><div class="legend">Demo</div><button class="btn peligro" onclick="Demo.borrar()">Borrar datos DEMO</button></fieldset>' : ''}
       <button class="btn" onclick="Ajustes.guardar()">Guardar ajustes</button>
       <div class="tiny" style="margin:14px 4px;text-align:center">Abreu Lantigua · datos solo en este dispositivo · v${Store.data.version}</div>
+    `);
+  },
+
+  /* Ajustes de la réplica: informa y sincroniza, no configura nada del modelo.
+     Cualquier cambio de supuestos se hace en el iPhone que publica. */
+  abrirAjustesConsulta(){
+    const c = Consulta.cfg;
+    const iso = Store.data.meta && Store.data.meta.actualizadoEn;
+    UI.abrirSheet('Consulta', `
+      <fieldset>
+        <div class="legend">Estado</div>
+        <div class="kv"><span class="k">Datos al</span><span class="v num">${iso ? new Date(iso).toLocaleString('es-DO', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}</span></div>
+        <div class="kv"><span class="k">Última sincronización</span><span class="v num">${c && c.sincronizadoEn ? new Date(c.sincronizadoEn).toLocaleString('es-DO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}</span></div>
+        <div class="tiny" style="margin-top:8px">Esta es una réplica de solo lectura. Las cifras se calculan aquí mismo con los datos que Juan José publicó; nada se edita desde este dispositivo.</div>
+      </fieldset>
+      ${c ? `<fieldset>
+        <div class="legend">Sincronizar</div>
+        <button class="btn" onclick="Consulta.refrescar(); UI.cerrarSheet();">Actualizar ahora</button>
+        <button class="btn sec" onclick="Consulta.desvincular()" style="margin-top:8px">Desvincular este dispositivo</button>
+        <div class="tiny" style="margin-top:6px">Desvincular borra el enlace y la copia guardada aquí. Se recupera abriendo de nuevo el enlace que envió Juan José.</div>
+      </fieldset>` : `<fieldset>
+        <div class="legend">Prueba local</div>
+        <button class="btn sec" onclick="Consulta.pruebaLocal(false)">Salir del modo consulta</button>
+      </fieldset>`}
+      <div class="tiny" style="margin:14px 4px;text-align:center">Abreu Lantigua · réplica de consulta · v${Store.data.version}</div>
     `);
   }
 };
 
 const Ajustes = {
   guardar(){
+    if (Modo.consulta()) return;
     const c = Store.data.config;
     const nuevaTasa = Fmt.parse($('aj-tc').value);
     if (!isNaN(nuevaTasa) && nuevaTasa > 0 && (nuevaTasa !== c.tasaCambio || $('aj-tc-fecha').value !== c.tasaCambioFecha)) {
@@ -1804,6 +1933,7 @@ const Ajustes = {
     UI.abrirAjustes();
   },
   importar(){
+    if (Modo.consulta()) return;
     const inp = $('aj-file');
     inp.onchange = () => {
       const file = inp.files[0]; if (!file) return;
@@ -1912,7 +2042,7 @@ const Ficha = {
         <div class="tiny" style="margin-top:8px">Los días cambian mes a mes porque se cuentan reales: febrero rinde menos que enero.</div>
       </div>
       ${i.notas ? `<div class="card"><h3>Notas</h3><div class="small">${i.notas}</div></div>` : ''}
-      <div class="btn-row">
+      <div class="btn-row solo-editor">
         <button class="btn sec" onclick="Forms.editarInstrumento('${i.id}')">Editar</button>
         <button class="btn peligro" onclick="Ficha.eliminar('instrumento','${i.id}')">Eliminar</button>
       </div>`);
@@ -1972,17 +2102,18 @@ const Ficha = {
         <div class="kv"><span class="k">Tasa anual</span><span class="v num">${Fmt.pct(hip.tasaAnual)}</span></div>
         <div class="tiny" style="margin-top:4px">La cuota se trata como salida completa de flujo (sin separar capital de interés hasta capturar la tabla de amortización).</div>
       </div>` : ''}
-      <button class="btn" onclick="Ficha.registrarRenta('${im.id}')">Registrar renta cobrada</button>
+      <button class="btn solo-editor" onclick="Ficha.registrarRenta('${im.id}')">Registrar renta cobrada</button>
       <div class="card" style="margin-top:12px"><h3>Historial de rentas cobradas</h3>
         <table class="dev"><thead><tr><th>Fecha</th><th>Monto</th><th>Estado</th></tr></thead><tbody>${rentas || '<tr><td colspan="3">Aún sin registros — esto separa la renta teórica de la real.</td></tr>'}</tbody></table></div>
       ${im.notas ? `<div class="card"><h3>Notas</h3><div class="small">${im.notas}</div></div>` : ''}
-      <div class="btn-row">
+      <div class="btn-row solo-editor">
         <button class="btn sec" onclick="Forms.editarInmueble('${im.id}')">Editar</button>
         <button class="btn peligro" onclick="Ficha.eliminar('inmueble','${im.id}')">Eliminar</button>
       </div>`);
   },
 
   registrarRenta(id){
+    if (Modo.consulta()) return;   // la réplica no escribe, ni por consola
     const im = Store.data.inmuebles.find(x => x.id === id); if (!im) return;
     const sugerido = (im.renta && im.renta.montoMensual) ? im.renta.montoMensual : 0;
     const monto = Fmt.parse(prompt('Monto cobrado:', sugerido));
@@ -1995,6 +2126,7 @@ const Ficha = {
   },
 
   eliminar(clase, id){
+    if (Modo.consulta()) return;
     if (!confirm('¿Eliminar este activo? Esta acción no se puede deshacer (haz un respaldo antes si tienes dudas).')) return;
     if (clase === 'instrumento') Store.data.instrumentos = Store.data.instrumentos.filter(x => x.id !== id);
     else Store.data.inmuebles = Store.data.inmuebles.filter(x => x.id !== id);
@@ -2238,6 +2370,7 @@ const Forms = {
   },
 
   editarInstrumento(id){
+    if (Modo.consulta()) return;
     const i = Store.data.instrumentos.find(x => x.id === id); if (!i) return;
     UI.cerrarSheet();
     UI.editando = { clase: 'instrumento', id };
@@ -2271,6 +2404,7 @@ const Forms = {
   },
 
   editarInmueble(id){
+    if (Modo.consulta()) return;
     const im = Store.data.inmuebles.find(x => x.id === id); if (!im) return;
     UI.cerrarSheet();
     UI.editando = { clase: 'inmueble', id };
@@ -2477,6 +2611,304 @@ const Informe = {
   }
 };
 
+
+/* =====================================================================
+   FASE 7 — Publicación cifrada y réplica de consulta
+   ---------------------------------------------------------------------
+   Modelo de confianza, explícito:
+   - El iPhone de Juan José cifra el JSON completo con AES-GCM de 256 bits
+     antes de que salga del dispositivo. El Worker guarda un bloque opaco:
+     no ve una sola cifra en claro y no ejecuta ninguna lógica de negocio.
+   - La llave se genera al azar aquí y viaja en el fragmento (#) del enlace.
+     El fragmento NO se envía al servidor en ninguna petición HTTP: quien
+     controle el Worker tiene el candado, nunca la llave.
+   - El token solo autoriza a ESCRIBIR. No sirve para descifrar.
+   - Cada publicación reemplaza el bloque completo. No hay merge ni
+     resolución de conflictos porque no hay dos escritores.
+   ===================================================================== */
+
+const Modo = {
+  consulta(){ return !!(Store.data && Store.data.meta && Store.data.meta.modoConsulta); }
+};
+
+const Cripto = {
+  /* base64url: seguro dentro de una URL, sin +, / ni = que haya que escapar. */
+  aB64u(buf){
+    const b = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+  deB64u(txt){
+    const t = String(txt).replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(t + '==='.slice((t.length + 3) % 4));
+    const b = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return b;
+  },
+  textoAB64u(txt){ return Cripto.aB64u(new TextEncoder().encode(txt)); },
+  b64uATexto(b64){ return new TextDecoder().decode(Cripto.deB64u(b64)); },
+
+  disponible(){ return !!(window.crypto && crypto.subtle); },
+
+  async nuevaClave(){
+    const k = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    return Cripto.aB64u(await crypto.subtle.exportKey('raw', k));
+  },
+  async importar(claveB64){
+    return crypto.subtle.importKey('raw', Cripto.deB64u(claveB64), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  },
+  /* IV nuevo en cada publicación: reutilizarlo con la misma llave rompería
+     AES-GCM. Como cada publicación genera uno al azar de 96 bits, no hay
+     riesgo práctico de repetición. */
+  async cifrar(claveB64, texto){
+    const key = await Cripto.importar(claveB64);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(texto));
+    return { v: 1, iv: Cripto.aB64u(iv), ct: Cripto.aB64u(ct) };
+  },
+  async descifrar(claveB64, ivB64, ctB64){
+    const key = await Cripto.importar(claveB64);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: Cripto.deB64u(ivB64) }, key, Cripto.deB64u(ctB64));
+    return new TextDecoder().decode(pt);
+  }
+};
+
+const Publicacion = {
+  cfg(){
+    const c = Store.data.config;
+    c.publicacion = Object.assign({ url: '', id: null, clave: null, token: '', publicadoEn: null }, c.publicacion || {});
+    return c.publicacion;
+  },
+  msg(t){ const el = $('aj-pub-msg'); if (el) el.innerHTML = t; },
+
+  /* El id y la llave se crean una sola vez y se conservan: si cambiaran en
+     cada publicación, el enlace de Lidia moriría cada semana. */
+  async asegurarIdentidad(){
+    const p = Publicacion.cfg();
+    if (!p.id) p.id = (crypto.randomUUID ? crypto.randomUUID() : Store.uuid()).replace(/-/g, '');
+    if (!p.clave) p.clave = await Cripto.nuevaClave();
+    return p;
+  },
+
+  destino(url, id){ return String(url).replace(/\/+$/, '') + '/p/' + encodeURIComponent(id); },
+
+  /* Lo que se publica: todo el modelo, menos el bloque de publicación.
+     El token y la llave jamás viajan dentro del contenido cifrado; si lo
+     hicieran, cualquiera con el enlace de lectura obtendría permiso de
+     escritura sobre el mismo bloque. */
+  payload(){
+    const d = JSON.parse(JSON.stringify(Store.data));
+    if (d.config) delete d.config.publicacion;
+    d.meta = d.meta || {};
+    d.meta.modoConsulta = false;     // lo decide el dispositivo receptor, no el blob
+    d.meta.publicadoEn = new Date().toISOString();
+    return JSON.stringify(d);
+  },
+
+  async publicarDesdeAjustes(){
+    if (Modo.consulta()) return;
+    const p = Publicacion.cfg();
+    p.url = ($('aj-pub-url').value || '').trim();
+    p.token = ($('aj-pub-token').value || '').trim();
+    Store.save();
+    await Publicacion.publicar();
+  },
+
+  async publicar(silencioso){
+    const p = Publicacion.cfg();
+    if (!Cripto.disponible()) { Publicacion.msg('Este navegador no expone Web Crypto. Ábrela por HTTPS.'); return false; }
+    if (!p.url || !/^https:\/\//i.test(p.url)) { Publicacion.msg('Falta la URL del Worker (debe empezar por https://).'); return false; }
+    if (!p.token) { Publicacion.msg('Falta el token de publicación.'); return false; }
+    try {
+      await Publicacion.asegurarIdentidad();
+      if (!silencioso) Publicacion.msg('Cifrando y enviando…');
+      Store.save();                                  // sella meta.actualizadoEn antes de empaquetar
+      const blob = await Cripto.cifrar(p.clave, Publicacion.payload());
+      const r = await fetch(Publicacion.destino(p.url, p.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.token },
+        body: JSON.stringify(blob)
+      });
+      if (r.status === 401) { Publicacion.msg('Token rechazado por el Worker. Revísalo en Cloudflare.'); return false; }
+      if (!r.ok) { Publicacion.msg('El Worker respondió ' + r.status + '. Verifica la URL.'); return false; }
+      p.publicadoEn = new Date().toISOString();
+      Store.data.meta.publicadoEn = p.publicadoEn;
+      Store.save();
+      Publicacion.msg('&#10003; Publicado. Lidia verá estos datos al abrir su app.');
+      return true;
+    } catch(e){
+      Publicacion.msg('No se pudo publicar: ' + (e.message || e) + '. Si es un error de red, revisa que el Worker permita CORS.');
+      return false;
+    }
+  },
+
+  enlace(){
+    const p = Publicacion.cfg();
+    if (!p.id || !p.clave || !p.url) return null;
+    const base = location.origin + location.pathname;
+    return base + '#al=' + Cripto.textoAB64u(p.url.replace(/\/+$/, '')) + '~' + p.id + '~' + p.clave;
+  },
+
+  async compartirEnlace(){
+    if (Modo.consulta()) return;
+    const p = Publicacion.cfg();
+    p.url = ($('aj-pub-url').value || '').trim() || p.url;
+    if (!p.url) { Publicacion.msg('Primero pon la URL del Worker.'); return; }
+    await Publicacion.asegurarIdentidad();
+    Store.save();
+    const url = Publicacion.enlace();
+    const texto = 'Abreu Lantigua — enlace de consulta. Ábrelo en Safari y añádelo a la pantalla de inicio.';
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Abreu Lantigua', text: texto, url }); return; }
+      await navigator.clipboard.writeText(url);
+      Publicacion.msg('Enlace copiado. Este enlace contiene la llave: mándalo solo a Lidia.');
+    } catch(e){
+      if (e && e.name === 'AbortError') return;
+      Publicacion.msg('Copia el enlace manualmente:<br><span style="word-break:break-all">' + url + '</span>');
+    }
+  },
+
+  async regenerar(){
+    if (Modo.consulta()) return;
+    if (!confirm('Regenerar crea un id y una llave nuevos. El enlace anterior deja de funcionar y hay que enviarle a Lidia el nuevo. ¿Continuar?')) return;
+    const p = Publicacion.cfg();
+    const viejo = { url: p.url, id: p.id };
+    p.url = ($('aj-pub-url').value || '').trim() || p.url;
+    p.token = ($('aj-pub-token').value || '').trim() || p.token;
+    // Borrar el bloque anterior es cortesía, no seguridad: sin la llave vieja
+    // ya era ilegible. Si falla, se continúa igual.
+    if (viejo.id && viejo.url && p.token) {
+      try {
+        await fetch(Publicacion.destino(viejo.url, viejo.id), {
+          method: 'DELETE', headers: { 'Authorization': 'Bearer ' + p.token }
+        });
+      } catch(e){}
+    }
+    p.id = null; p.clave = null; p.publicadoEn = null;
+    await Publicacion.asegurarIdentidad();
+    Store.save();
+    const ok = await Publicacion.publicar(true);
+    Publicacion.msg(ok ? '&#10003; Enlace regenerado y publicado. Envíaselo a Lidia: el anterior ya no sirve.'
+                       : 'Enlace regenerado, pero la publicación falló. Pulsa "Publicar ahora".');
+  }
+};
+
+const Consulta = {
+  KEY: 'patrimonio_consulta_v1',
+  cfg: null,
+  estado: null,   // null | 'sincronizando' | 'offline' | 'clave' | 'vacio'
+
+  leer(){ try { const r = localStorage.getItem(Consulta.KEY); return r ? JSON.parse(r) : null; } catch(e){ return null; } },
+  escribir(c){ try { localStorage.setItem(Consulta.KEY, JSON.stringify(c)); } catch(e){} },
+
+  /* Enlace: <app>#al=<urlEnB64u>~<id>~<llave>. Autocontenido: Lidia no
+     configura nada, solo abre el enlace una vez. */
+  parseEnlace(txt){
+    const i = String(txt || '').indexOf('#al=');
+    if (i < 0) return null;
+    const p = String(txt).slice(i + 4).split('~');
+    if (p.length < 3 || !p[0] || !p[1] || !p[2]) return null;
+    try { return { url: Cripto.b64uATexto(p[0]), id: p[1], clave: p[2] }; }
+    catch(e){ return null; }
+  },
+
+  /* Se llama antes de pintar nada. Devuelve true si el dispositivo es réplica. */
+  async iniciar(){
+    const frag = Consulta.parseEnlace(location.hash);
+    let c = Consulta.leer();
+    if (frag) {
+      if (!c || c.id !== frag.id || c.clave !== frag.clave || c.url !== frag.url) {
+        c = { url: frag.url, id: frag.id, clave: frag.clave, blob: null, sincronizadoEn: null };
+        Consulta.escribir(c);
+      }
+      // La llave sale de la barra de direcciones en cuanto queda guardada:
+      // así no se filtra en una captura de pantalla ni en un "compartir página".
+      try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+    }
+    if (!c) return false;
+    Consulta.cfg = c;
+    Store.soloLectura = true;
+    Store.data.meta.modoConsulta = true;
+    if (c.blob) await Consulta.aplicar(c.blob);   // pinta al instante desde la copia local
+    return true;
+  },
+
+  async aplicar(blob){
+    try {
+      const txt = await Cripto.descifrar(Consulta.cfg.clave, blob.iv, blob.ct);
+      const d = JSON.parse(txt);
+      if (!d || typeof d !== 'object' || !('instrumentos' in d)) throw new Error('formato');
+      Store.soloLectura = true;
+      Store.data = Store.migrar(d);
+      Store.data.meta = Store.data.meta || {};
+      Store.data.meta.modoConsulta = true;
+      return true;
+    } catch(e){ return false; }
+  },
+
+  async refrescar(){
+    const c = Consulta.cfg;
+    if (!c) return;
+    Consulta.estado = 'sincronizando';
+    UI.renderBanner();
+    try {
+      const r = await fetch(Publicacion.destino(c.url, c.id) + '?t=' + Date.now(), { cache: 'no-store' });
+      if (r.status === 404) { Consulta.estado = 'vacio'; UI.renderBanner(); return; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.json();
+      if (!blob || !blob.ct || !blob.iv) throw new Error('respuesta no válida');
+      if (!(await Consulta.aplicar(blob))) { Consulta.estado = 'clave'; UI.renderBanner(); return; }
+      c.blob = blob;
+      c.sincronizadoEn = new Date().toISOString();
+      Consulta.escribir(c);
+      Consulta.estado = null;
+      UI.renderTodo();
+      if (UI.vista === 'informe') Informe.renderPreview();
+      UI.renderBanner();
+    } catch(e){
+      // Sin red se conserva la última copia: la app abre igual, con el banner
+      // diciendo de cuándo es el dato. Un dato viejo rotulado es útil; uno
+      // viejo disfrazado de nuevo, no.
+      Consulta.estado = 'offline';
+      UI.renderBanner();
+    }
+  },
+
+  /* Respaldo para iOS: al añadir a la pantalla de inicio, el icono abre la app
+     por la start_url del manifest y pierde el fragmento. Si eso deja el
+     dispositivo sin llave, se pega el enlace una vez desde aquí. */
+  vincularPegando(){
+    const txt = prompt('Pega el enlace de consulta completo (el que incluye el #):', '');
+    if (!txt) return;
+    const p = Consulta.parseEnlace(txt);
+    if (!p) { alert('Ese enlace no tiene el formato esperado. Debe contener "#al=".'); return; }
+    if (!confirm('Este dispositivo pasará a modo consulta (solo lectura). Tus datos locales no se borran: siguen guardados y vuelven al desvincular. ¿Continuar?')) return;
+    Consulta.escribir({ url: p.url, id: p.id, clave: p.clave, blob: null, sincronizadoEn: null });
+    location.reload();
+  },
+
+  desvincular(){
+    if (!confirm('Se borrará el enlace y la copia guardada en este dispositivo. ¿Continuar?')) return;
+    try { localStorage.removeItem(Consulta.KEY); } catch(e){}
+    location.reload();
+  },
+
+  /* Prueba local del modo consulta, sin red. No toca los datos: solo levanta
+     la bandera en memoria para verificar que la UI queda bloqueada. */
+  pruebaLocal(on){
+    if (on) {
+      try { sessionStorage.setItem('al_consulta_prueba', '1'); } catch(e){}
+    } else {
+      try { sessionStorage.removeItem('al_consulta_prueba'); } catch(e){}
+    }
+    location.reload();
+  },
+  pruebaActiva(){
+    try { return sessionStorage.getItem('al_consulta_prueba') === '1'; } catch(e){ return false; }
+  }
+};
+
 /* =====================================================================
    Snapshots automáticos + arranque
    ===================================================================== */
@@ -2526,11 +2958,26 @@ setTimeout(() => {
   document.documentElement.classList.add('lista');
 }, 4000);
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   Store.load();
-  snapshotDiario();
+
+  /* Orden deliberado: primero se decide si este dispositivo es la fuente de
+     verdad o una réplica. Si es réplica, no se toma snapshot ni se escribe
+     nada, y la UI se monta ya bloqueada — nunca aparece un botón de editar
+     que luego desaparece. */
+  let replica = false;
+  try { replica = await Consulta.iniciar(); } catch(e){ replica = false; }
+  if (!replica && Consulta.pruebaActiva()) {
+    Store.soloLectura = true;
+    Store.data.meta.modoConsulta = true;
+  }
+  if (!Modo.consulta()) snapshotDiario();
+
   UI.init();
   ocultarSplash();
+
+  if (replica) Consulta.refrescar();   // en segundo plano: la app ya está pintada
+
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
