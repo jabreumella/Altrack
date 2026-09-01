@@ -501,13 +501,19 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
           <div><label>Fecha vencimiento</label><input id="c-venc" type="date"></div>
         </div>
         <div class="switch-row"><span>Renovación automática</span><span class="switch"><input type="checkbox" id="c-renov" checked><span class="tr"></span><span class="th"></span></span></div>
-        <label>Base de días del banco</label>
+        <label>Base de días del banco <span class="tiny">(denominador del año)</span></label>
         <select id="c-base">
-          <option value="360">360 — días reales / 360</option>
-          <option value="365">365 — días reales / 365</option>
+          <option value="360">360</option>
+          <option value="365">365</option>
         </select>
+        <label>Conteo de días del mes</label>
+        <select id="c-conteo">
+          <option value="actual">Días reales del calendario (enero 31, febrero 28)</option>
+          <option value="30fijo">Mes comercial de 30 días parejos</option>
+        </select>
+        <div class="tiny">Son dos cosas distintas. La <b>base</b> es el denominador del año; el <b>conteo</b> es cuántos días le reconoce el banco a cada corte mensual. Con la misma base 360, un mes de 31 días reales rinde ~3.3% más que uno comercial de 30. <b>APAP liquida meses de 30 parejos.</b></div>
         <div class="switch-row"><span>La retención se descuenta cada mes<br><span class="tiny">Solo capitaliza el interés neto</span></span><span class="switch"><input type="checkbox" id="c-cap-neto"><span class="tr"></span><span class="th"></span></span></div>
-        <div class="tiny">Verifica ambos contra tu estado de cuenta: cambian de banco a banco y mueven la cifra de forma visible en capitales grandes.</div>
+        <div class="tiny">Verifica los tres contra tu estado de cuenta: cambian de banco a banco y mueven la cifra de forma visible en capitales grandes.</div>
         <label>Notas</label><textarea id="c-notas" rows="2"></textarea>
         <div class="preview" id="c-preview" style="display:none"></div>
         <div class="err" id="c-err"></div>
@@ -770,6 +776,22 @@ const Fecha = {
     d.setDate(Math.min(diaObjetivo, ultimoDiaMes));  // recorta al último día si el mes es más corto
     return Fecha.iso(d);
   },
+  /* Conteo 30/360 (US/NASD) para tramos parciales cuando el banco liquida
+     meses comerciales de 30 días parejos. Es el compañero natural de esa
+     convención: garantiza que doce cortes den exactamente 360 días.
+     Ajustes estándar de fin de mes para que un corte movido al 28 de febrero
+     no cuente menos días que uno del 30. */
+  dias360(a, b){
+    const A = Fecha.parse(a), B = Fecha.parse(b);
+    let d1 = A.getDate(), d2 = B.getDate();
+    const m1 = A.getMonth() + 1, m2 = B.getMonth() + 1;
+    const y1 = A.getFullYear(), y2 = B.getFullYear();
+    const ultA = new Date(y1, m1, 0).getDate();
+    const ultB = new Date(y2, m2, 0).getDate();
+    if (d1 === ultA) d1 = 30;
+    if (d2 === ultB && d1 === 30) d2 = 30;
+    return 360 * (y2 - y1) + 30 * (m2 - m1) + (d2 - d1);
+  },
   /* Meses completos transcurridos + fracción (días residuales / 30), según spec */
   mesesFrac(inicio, fecha){
     if (Fecha.dias(inicio, fecha) <= 0) return { completos: 0, frac: 0 };
@@ -785,7 +807,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 8,
+  version: 9,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -947,6 +969,23 @@ const Store = {
       d.version = 8;
     }
 
+    if (d.version < 9) {
+      // Conteo de días DENTRO del mes, separado de la base de días.
+      // Son dos cosas distintas y hasta ahora estaban colapsadas en una:
+      //   baseDias      = el denominador del año (360 o 365)
+      //   convencionDias= cómo se cuentan los días de cada corte mensual
+      // APAP liquida meses comerciales de 30 días parejos ('30fijo'); Banco
+      // Popular cuenta los días reales del calendario ('actual'). Con el mismo
+      // baseDias=360 los dos dan cifras distintas, y esa era la discrepancia.
+      // Se siembra 'actual' en todos: preserva EXACTAMENTE el comportamiento
+      // anterior. Cada certificado se ajusta editándolo contra su estado de cuenta.
+      d.instrumentos.forEach(x => {
+        if (x.tipo !== 'certificado') return;
+        if (x.convencionDias == null) x.convencionDias = 'actual';
+      });
+      d.version = 9;
+    }
+
     d.titulares = d.titulares || base.titulares.slice();
     return d;
   },
@@ -990,7 +1029,13 @@ const Calc = {
     return {
       base: inst.baseDias || cfg.baseDias || 365,
       ret: esFondoGanancia ? 0 : (cfg.aplicarRetencion ? (inst.retencionISR != null ? inst.retencionISR : cfg.retencionISR) : 0),
-      capNeto: !!inst.retencionCapitalizaNeto
+      capNeto: !!inst.retencionCapitalizaNeto,
+      /* Cómo cuenta el banco los días de cada corte mensual:
+         'actual' → días reales del calendario (enero rinde más que febrero)
+         '30fijo' → mes comercial de 30 días parejos (12 cortes = 360 días)
+         Los mutuos con ganancia declarada no dependen de esto: la tasa se deriva
+         de la ganancia y el conteo se cancela en el prorrateo. */
+      conteo: (inst.tipo === 'certificado' && inst.convencionDias === '30fijo') ? '30fijo' : 'actual'
     };
   },
 
@@ -1019,17 +1064,32 @@ const Calc = {
   },
 
   /* Fechas de corte: aniversario mensual del día de apertura, hasta `hasta`.
-     Devuelve también el tramo parcial (stub) que va del último corte a la fecha. */
-  cortesCertificado(inst, hasta){
+     Devuelve también el tramo parcial (stub) que va del último corte a la fecha.
+
+     El conteo de días de cada corte depende del banco:
+     - 'actual': días reales entre aniversarios (28, 29, 30 o 31).
+     - '30fijo': mes comercial de 30 días parejos, sin importar el calendario.
+       El tramo parcial usa entonces el conteo 30/360, que es su compañero
+       natural: avanza 1 a 1 hasta 30 y cierra justo cuando el corte se cumple,
+       sin saltos hacia atrás en el interés devengado. */
+  cortesCertificado(inst, hasta, conteo){
+    const c30 = conteo === '30fijo';
     const cortes = [];
     let n = 1, prev = inst.fechaInicio;
     while (n <= 600) {
       const corte = Fecha.addMeses(inst.fechaInicio, n);
       if (Fecha.dias(corte, hasta) < 0) break;
-      cortes.push({ desde: prev, hasta: corte, dias: Fecha.dias(prev, corte) });
+      cortes.push({ desde: prev, hasta: corte, dias: c30 ? 30 : Fecha.dias(prev, corte) });
       prev = corte; n++;
     }
-    return { cortes, ultimoCorte: prev, diasStub: Math.max(0, Fecha.dias(prev, hasta)) };
+    const stub = c30 ? Math.min(30, Fecha.dias360(prev, hasta)) : Fecha.dias(prev, hasta);
+    return { cortes, ultimoCorte: prev, diasStub: Math.max(0, stub) };
+  },
+
+  /* Días transcurridos entre dos fechas según el conteo del instrumento.
+     Se usa en el devengo lineal (pago al vencimiento), donde no hay cortes. */
+  diasSegun(conteo, a, b){
+    return conteo === '30fijo' ? Fecha.dias360(a, b) : Fecha.dias(a, b);
   },
 
   /* Certificado valuado a una fecha cualquiera (pasada, hoy o futura).
@@ -1062,7 +1122,7 @@ const Calc = {
       };
     }
 
-    const { cortes, diasStub } = this.cortesCertificado(inst, fEval);
+    const { cortes, diasStub } = this.cortesCertificado(inst, fEval, cv.conteo);
     const capitaliza = inst.modalidad === 'capitalizable_mensual';
     const pagaMensual = inst.modalidad === 'pago_mensual';
 
@@ -1099,9 +1159,9 @@ const Calc = {
       valor = inst.capital;
       interesDevengado = devengadoNoPagado;
       retencionPendiente = devengadoNoPagado * cv.ret;
-    } else { // pago_vencimiento: devengo lineal sobre días reales, nada se liquida antes
+    } else { // pago_vencimiento: devengo lineal, nada se liquida antes
       interesDevengado = inst.capital * inst.tasaNominalAnual
-                       * Fecha.dias(inst.fechaInicio, fEval) / cv.base;
+                       * Math.max(0, this.diasSegun(cv.conteo, inst.fechaInicio, fEval)) / cv.base;
       valor = inst.capital + interesDevengado;
       retencionPendiente = interesDevengado * cv.ret;
       retenido = 0;
@@ -2016,6 +2076,7 @@ const Ficha = {
         <div class="kv"><span class="k">Prorrateo mensual aprox.</span><span class="v num">${Fmt.money(i.gananciaVencimiento / Math.max(1, Fecha.dias(i.fechaInicio, i.fechaVencimiento) / 30.44), i.moneda)}</span></div>` : ''}
         <div class="kv"><span class="k">Vigencia</span><span class="v num">${Fmt.fecha(i.fechaInicio)} → ${Fmt.fecha(i.fechaVencimiento)}</span></div>
         <div class="kv"><span class="k">Días al vencimiento</span><span class="v num">${diasV >= 0 ? diasV : 'Vencido'}${i.renovacionAutomatica ? ' · renueva' : ''}</span></div>
+        ${esFondo ? '' : `<div class="kv"><span class="k">Conteo del banco</span><span class="v">${cv.conteo === '30fijo' ? '30 fijos' : 'Días reales'} / ${cv.base}</span></div>`}
       </div>
       <div class="card">
         <h3>Posición a hoy</h3>
@@ -2029,7 +2090,7 @@ const Ficha = {
         <div class="kv"><span class="k">Interés bruto ganado a la fecha</span><span class="v num">${Fmt.money(c.interesBrutoTotal, i.moneda)}</span></div>
         <div class="kv"><span class="k">Retención ya practicada</span><span class="v num">${Fmt.money(c.retenidoAcumulado, i.moneda)}</span></div>
         <div class="kv"><span class="k">Interés neto <span class="tiny">(retención ${Fmt.pct(cv.ret,2)})</span></span><span class="v num">${Fmt.money(c.interesNetoTotal, i.moneda)}</span></div>
-        <div class="tiny" style="margin-top:8px">Convención: días reales / ${cv.base}, cortes en el aniversario mensual del inicio (día ${Fecha.parse(i.fechaInicio).getDate()}); en meses más cortos que ese día, el corte se mueve al último día del mes.
+        <div class="tiny" style="margin-top:8px">Convención: ${cv.conteo === '30fijo' ? `mes comercial de <b>30 días parejos</b> / ${cv.base}` : `<b>días reales</b> del calendario / ${cv.base}`}, cortes en el aniversario mensual del inicio (día ${Fecha.parse(i.fechaInicio).getDate()}); en meses más cortos que ese día, el corte se mueve al último día del mes.
         ${i.modalidad==='capitalizable_mensual' ? (cv.capNeto ? ' La retención se descuenta cada mes: solo capitaliza el interés neto.' : ' La retención se liquida al final: capitaliza el interés bruto.') : i.modalidad==='pago_mensual' ? ' El interés pagado sale del instrumento; el capital no crece.' : ' Devengo lineal, todo se liquida al vencimiento.'}
         El tramo desde el último corte es interés simple, no capitalizado.
         ${esFondo ? ' Se reparte la ganancia declarada en proporción a los días transcurridos; el monto del vencimiento es exacto y el del mes en curso es el prorrateo. La ganancia se toma como neta: no se le aplica retención.' : ''}</div>
@@ -2039,7 +2100,9 @@ const Ficha = {
         <div style="max-height:280px;overflow-y:auto">
         <table class="dev"><thead><tr><th>Corte</th><th>Días</th><th>Interés</th><th>Retención</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table>
         </div>
-        <div class="tiny" style="margin-top:8px">Los días cambian mes a mes porque se cuentan reales: febrero rinde menos que enero.</div>
+        <div class="tiny" style="margin-top:8px">${cv.conteo === '30fijo'
+          ? 'Todos los cortes valen 30 días: el banco liquida meses comerciales, así que febrero rinde igual que enero y los doce cortes suman exactamente 360 días. El tramo parcial se cuenta con la misma regla (30/360).'
+          : 'Los días cambian mes a mes porque se cuentan reales: febrero rinde menos que enero.'}</div>
       </div>
       ${i.notas ? `<div class="card"><h3>Notas</h3><div class="small">${i.notas}</div></div>` : ''}
       <div class="btn-row solo-editor">
@@ -2148,6 +2211,9 @@ const Forms = {
     $('f-guardar').addEventListener('click', () => Forms.guardarFondo());
     $('i-guardar').addEventListener('click', () => Forms.guardarInmueble());
     ['c-capital','c-tasa','c-inicio','c-venc','c-modalidad'].forEach(id => $(id).addEventListener('input', () => Forms.previewCert()));
+    // Base, conteo y capitalización también mueven la cifra: sin esto la vista
+    // previa se quedaba mostrando el resultado de la convención anterior.
+    ['c-base','c-conteo','c-cap-neto'].forEach(id => $(id).addEventListener('change', () => Forms.previewCert()));
     ['f-capital','f-ganancia','f-inicio','f-venc','f-base'].forEach(id => $(id).addEventListener('input', () => Forms.previewFondo()));
     ['f-capital','f-ganancia','f-inicio','f-venc','f-base'].forEach(id => $(id).addEventListener('change', () => Forms.previewFondo()));
     ['i-renta','i-vac','i-g-mant','i-g-adm','i-g-seg','i-g-otros','i-ipi','i-rep','i-hip-cuota','i-vm','i-estado','i-hip'].forEach(id => $(id).addEventListener('input', () => Forms.previewInm()));
@@ -2173,6 +2239,7 @@ const Forms = {
     if (cap === null || tasa === null || !ini || !ven || Fecha.dias(ini, ven) <= 0) { box.style.display = 'none'; return; }
     const inst = { tipo:'certificado', capital: cap, tasaNominalAnual: tasa/100, modalidad: $('c-modalidad').value,
       baseDias: parseInt($('c-base').value, 10) || 365,
+      convencionDias: $('c-conteo').value,
       retencionCapitalizaNeto: $('c-cap-neto').checked,
       fechaInicio: ini, fechaVencimiento: ven, renovacionAutomatica: false };
     const c = Calc.certificado(inst, ven);
@@ -2215,6 +2282,7 @@ const Forms = {
       capital: cap, tasaNominalAnual: tasa/100,
       modalidad: $('c-modalidad').value,
       baseDias: parseInt($('c-base').value, 10) || 365,
+      convencionDias: $('c-conteo').value,
       retencionCapitalizaNeto: $('c-cap-neto').checked,
       fechaInicio: ini, fechaVencimiento: ven,
       renovacionAutomatica: $('c-renov').checked,
@@ -2383,6 +2451,7 @@ const Forms = {
       Miles.set('c-capital', i.capital); $('c-tasa').value = (i.tasaNominalAnual*100).toFixed(2);
       $('c-modalidad').value = i.modalidad;
       $('c-base').value = String(i.baseDias || Store.data.config.baseDias || 365);
+      $('c-conteo').value = (i.convencionDias === '30fijo') ? '30fijo' : 'actual';
       $('c-cap-neto').checked = !!i.retencionCapitalizaNeto;
       $('c-inicio').value = i.fechaInicio; $('c-venc').value = i.fechaVencimiento;
       $('c-renov').checked = !!i.renovacionAutomatica; $('c-notas').value = i.notas || '';
@@ -2547,7 +2616,7 @@ const Informe = {
         <div style="flex:1;text-align:center"><img id="pdf-pie-3" style="max-width:100%;max-height:190px"><div style="font-size:10px;color:#6b7f74">Detalle</div></div>
       </div>
       <div class="pdf-foot">
-        <b>Supuestos:</b> cada certificado usa la base de días y el criterio de capitalización declarados en su ficha (días reales sobre 360 o 365); ${cfg.baseDias} es el valor por defecto para instrumentos nuevos. Retención ISR sobre intereses: ${cfg.aplicarRetencion ? Fmt.pct(cfg.retencionISR,0) + ' aplicada' : 'no aplicada'}. ISR sobre alquileres: ${cfg.aplicarIsrAlquiler ? Fmt.pct(cfg.isrAlquilerEfectivo,0) + ' efectivo sobre renta bruta (aproximación, por confirmar con el contador)' : 'no aplicado'}.
+        <b>Supuestos:</b> cada certificado usa la base de días, el conteo de días del mes (reales o mes comercial de 30) y el criterio de capitalización declarados en su ficha; base ${cfg.baseDias} es el valor por defecto para instrumentos nuevos. Retención ISR sobre intereses: ${cfg.aplicarRetencion ? Fmt.pct(cfg.retencionISR,0) + ' aplicada' : 'no aplicada'}. ISR sobre alquileres: ${cfg.aplicarIsrAlquiler ? Fmt.pct(cfg.isrAlquilerEfectivo,0) + ' efectivo sobre renta bruta (aproximación, por confirmar con el contador)' : 'no aplicado'}.
         Los valores de mercado de los inmuebles son estimados por el usuario en la fecha indicada. El patrimonio inmobiliario se reporta como equity (valor estimado menos saldo de hipoteca).
         Las proyecciones son determinísticas y los rendimientos estimados de fondos no son tasas contractuales. Cifras consolidadas convertidas a ${base} a la tasa indicada en el encabezado.
         Documento generado en el dispositivo; ningún dato sale del iPhone. Página 2 de 2.</div>`;

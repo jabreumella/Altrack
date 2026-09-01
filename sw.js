@@ -1,11 +1,11 @@
-/* Service worker — Abreu Lantigua v2
+/* Service worker — Abreu Lantigua v11
    Estrategia mixta:
    - El HTML de la app va "red primero": así cada versión nueva que subas a
      GitHub Pages llega al iPhone sin tener que borrar la app. Si no hay red,
      se sirve la última copia cacheada y la app abre igual.
    - Las librerías de CDN y los íconos van "caché primero": no cambian.
    Sin llamadas de red adicionales: solo se cachea lo que la app ya pide. */
-const CACHE = 'abreu-lantigua-v10';
+const CACHE = 'abreu-lantigua-v11';
 const SHELL = [
   './',
   './index.html',
