@@ -464,6 +464,59 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
     <div id="lista-portafolio"></div>
   </section>
 
+
+  <!-- ============ RENTA (renta corta) ============ -->
+  <section class="view" id="view-renta">
+    <div class="chart-vacio" id="renta-vacio" style="display:none"></div>
+    <div id="renta-cuerpo">
+      <div class="card" id="renta-sel-card" style="display:none">
+        <label>Inmueble</label>
+        <select id="renta-sel"></select>
+      </div>
+
+      <div class="card" id="renta-mes-card"></div>
+
+      <div class="card">
+        <h3>Resumen de los ultimos 12 meses</h3>
+        <div id="renta-metricas"></div>
+      </div>
+
+      <div class="card">
+        <h3>Ingreso neto mensual</h3>
+        <div class="seg" id="seg-renta-rango">
+          <button data-rr="6m">6M</button>
+          <button data-rr="12m" class="active">12M</button>
+          <button data-rr="todo">Todo</button>
+        </div>
+        <div class="chart-box"><canvas id="chart-renta-neto"></canvas></div>
+        <div class="tiny" style="margin-top:6px">Solo meses cerrados. El eje horizontal es el mismo del grafico de abajo, para leer los dos en vertical.</div>
+      </div>
+
+      <div class="card">
+        <h3 id="renta-ocup-titulo">Ocupacion</h3>
+        <div class="seg" id="seg-renta-metrica">
+          <button data-rm="ocupacion" class="active">Ocupacion</button>
+          <button data-rm="revpar">RevPAR</button>
+        </div>
+        <div class="chart-box"><canvas id="chart-renta-ocup"></canvas></div>
+        <div class="tiny" id="renta-ocup-nota" style="margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Composicion del bruto</h3>
+        <div class="chart-box"><canvas id="chart-renta-dona"></canvas></div>
+        <div id="renta-dona-detalle" style="margin-top:8px"></div>
+      </div>
+
+      <button class="btn solo-editor" id="renta-nuevo">Registrar mes</button>
+
+      <div class="card" style="margin-top:12px">
+        <h3>Meses cerrados</h3>
+        <div id="renta-lista"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ AGREGAR ============ -->
   <section class="view" id="view-agregar">
     <div class="card">
@@ -580,6 +633,22 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
           <option value="vacante">Vacante</option>
           <option value="uso_propio">Uso propio</option>
         </select>
+        <label>Modalidad de renta</label>
+        <select id="i-modalidad-renta">
+          <option value="larga">Larga: contrato con renta mensual fija</option>
+          <option value="corta">Corta: noches, ingreso variable</option>
+        </select>
+        <div class="tiny" style="margin-top:5px">En modalidad corta no hay renta contractual que suponer: el NOI, el cap rate y el flujo se derivan del historico real que registras en el tab Renta.</div>
+      </fieldset>
+      <fieldset id="i-bloque-corta" style="display:none">
+        <div class="legend">Renta corta</div>
+        <label>Comision de gestion (%)</label>
+        <input id="i-rc-comision" inputmode="decimal" placeholder="20.00">
+        <div class="tiny" style="margin-top:5px">Se aplica sobre el ingreso bruto <b>despues</b> de descontar la limpieza. El monto queda editable en cada mes.</div>
+        <label>Servicios fijos que se precargan cada mes</label>
+        <div class="tiny" style="margin-bottom:6px">Un concepto por linea, con el monto separado por coma: <code>Edesur, 5800</code></div>
+        <textarea id="i-rc-servicios" rows="4" placeholder="Edesur, 0&#10;Cuota mantenimiento, 0&#10;Internet Claro, 0&#10;IRIG (camaras), 0"></textarea>
+        <div class="tiny" style="margin-top:5px">Son solo la plantilla: al abrir un mes se copian y ahi se ajustan los montos reales sin tocar esta lista.</div>
       </fieldset>
       <fieldset id="i-bloque-renta">
         <div class="legend">Renta</div>
@@ -652,6 +721,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 <nav class="tabbar">
   <button data-v="resumen" class="active"><span class="ic">&#8962;</span>Resumen</button>
   <button data-v="portafolio"><span class="ic">&#9776;</span>Portafolio</button>
+  <button data-v="renta" id="tab-renta"><span class="ic">&#127968;</span>Renta</button>
   <button data-v="agregar" id="tab-agregar"><span class="ic">&#65291;</span>Agregar</button>
   <button data-v="informe"><span class="ic">&#128196;</span>Informe</button>
 </nav>
@@ -807,7 +877,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 9,
+  version: 10,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -984,6 +1054,20 @@ const Store = {
         if (x.convencionDias == null) x.convencionDias = 'actual';
       });
       d.version = 9;
+    }
+
+    if (d.version < 10) {
+      // Renta corta. Un apartamento alquilado por noches no tiene renta
+      // contractual que suponer: tiene meses cobrados que medir. Se marca la
+      // modalidad de TODOS los inmuebles existentes como 'larga', lo que
+      // preserva exactamente el comportamiento anterior, y se crea la caja
+      // donde viven la comision de gestion, la plantilla de servicios fijos y
+      // los cierres mensuales. Ningun dato existente se toca.
+      d.inmuebles.forEach(im => {
+        if (!im.modalidadRenta) im.modalidadRenta = 'larga';
+        if (!im.rentaCorta) im.rentaCorta = { comisionPorcentaje: 0.20, serviciosPlantilla: [], cierres: [] };
+      });
+      d.version = 10;
     }
 
     d.titulares = d.titulares || base.titulares.slice();
@@ -1231,16 +1315,30 @@ const Calc = {
     const ga = im.gastosAnuales || {};
     const hip = im.hipoteca || { activa: false };
 
-    const rentaAnualBruta = rentado ? (r.montoMensual || 0) * 12 * (1 - (r.vacanciaEstimada || 0)) : 0;
-    const gastosOperativos = ((gm.mantenimiento||0)+(gm.administracion||0)+(gm.seguro||0)+(gm.otros||0)) * 12
-                           + (ga.ipi||0) + (ga.reparacionesEstimadas||0);
+    // Renta corta: no hay renta contractual ni vacancia estimada que suponer.
+    // La cascada anual se reconstruye anualizando el promedio de los meses
+    // realmente cerrados, que es el unico dato que existe.
+    const corta = im.modalidadRenta === 'corta';
+    const rc12 = corta ? this.rcResumen(im, 12) : null;
+    const rentaAnualBruta = !rentado ? 0
+      : corta ? (rc12.meses ? (rc12.bruto / rc12.meses) * 12 : 0)
+              : (r.montoMensual || 0) * 12 * (1 - (r.vacanciaEstimada || 0));
+    const gastosOperativos = corta
+      ? (rc12.meses ? ((rc12.costoGestion + rc12.servicios + rc12.compras) / rc12.meses) * 12 : 0)
+      : ((gm.mantenimiento||0)+(gm.administracion||0)+(gm.seguro||0)+(gm.otros||0)) * 12
+        + (ga.ipi||0) + (ga.reparacionesEstimadas||0);
     const NOI = rentaAnualBruta - (rentado ? gastosOperativos : 0);
     const capRate = im.valorMercadoEstimado > 0 ? NOI / im.valorMercadoEstimado : null;
     const costoTotal = (im.costoAdquisicion || 0) + (im.gastosCierre || 0);
     const capRateSobreCosto = costoTotal > 0 ? NOI / costoTotal : null;
     const servicioDeuda = hip.activa ? (hip.cuotaMensual || 0) * 12 : 0;
     const flujoAntesISR = NOI - servicioDeuda;
-    const isrAlquiler = (rentado && cfg.aplicarIsrAlquiler) ? rentaAnualBruta * cfg.isrAlquilerEfectivo : 0;
+    // El % de ISR de alquiler configurado esta calibrado para renta larga. En
+    // renta corta el tratamiento fiscal cambia (alojamiento turistico), asi que
+    // NO se aplica automaticamente: se declara en la ficha y los impuestos que
+    // efectivamente pagues se cargan como gasto del mes. Inventar aqui una
+    // retencion que no aplica sesgaria todo el historico en la misma direccion.
+    const isrAlquiler = (rentado && cfg.aplicarIsrAlquiler && !corta) ? rentaAnualBruta * cfg.isrAlquilerEfectivo : 0;
     const flujoNetoAnual = rentado ? flujoAntesISR - isrAlquiler : 0;
     const equity = (im.valorMercadoEstimado || 0) - (hip.activa ? (hip.saldoActual || 0) : 0);
     // Capital invertido: costo + cierre − financiamiento original.
@@ -1253,7 +1351,8 @@ const Calc = {
 
     return { rentado, rentaAnualBruta, gastosOperativos, NOI, capRate, capRateSobreCosto,
              servicioDeuda, flujoAntesISR, isrAlquiler, flujoNetoAnual, equity,
-             capitalInvertido, cashOnCash, costoTotal, usaProxyFin };
+             capitalInvertido, cashOnCash, costoTotal, usaProxyFin,
+             corta, rc12, mesesRC: corta ? rc12.meses : null };
   },
 
   /* Equity proyectado de un inmueble a fecha futura: solo apreciación estimada sobre
@@ -1265,6 +1364,118 @@ const Calc = {
     const vm = (im.valorMercadoEstimado || 0) * Math.pow(1 + (im.apreciacionAnualEstimada || 0), anios);
     const saldo = (im.hipoteca && im.hipoteca.activa) ? (im.hipoteca.saldoActual || 0) : 0;
     return vm - saldo;
+  },
+
+  /* ---------- Renta corta ----------
+     La cascada del mes es la que liquida el gestor, en este orden:
+       bruto - limpieza                 = base de comision
+       base - comision(%) - compras     = deposito que entra al banco
+       deposito - servicios fijos       = ingreso neto
+     La comision NO se calcula sobre el bruto sino sobre la base: sobre 100,000
+     con 8,000 de limpieza son 18,400 y no 20,000, y esos 1,600 mensuales no son
+     ruido a lo largo de un ano.
+     El deposito es el punto de conciliacion contra el estado de cuenta. Si se
+     captura el recibido y no coincide con el calculado, la diferencia se muestra;
+     nunca se resuelve en silencio. El neto parte del deposito realmente recibido
+     cuando existe, porque el banco es la fuente de verdad. */
+  rcPct(im){
+    const rc = im.rentaCorta || {};
+    return rc.comisionPorcentaje != null ? rc.comisionPorcentaje : 0.20;
+  },
+
+  rcCierre(im, c){
+    const suma = a => (a || []).reduce((t, x) => t + (x.monto || 0), 0);
+    const bruto = c.ingresoBruto || 0;
+    const limpieza = c.limpieza || 0;
+    const baseComision = bruto - limpieza;
+    const comision = (c.comisionMonto != null) ? c.comisionMonto : baseComision * this.rcPct(im);
+    const compras = suma(c.compras);
+    const servicios = suma(c.servicios);
+    const depositoCalc = baseComision - comision - compras;
+    const hayDep = c.depositoRecibido != null;
+    const deposito = hayDep ? c.depositoRecibido : depositoCalc;
+    const disp = c.nochesDisponibles || 0;
+    const ocup = c.nochesOcupadas || 0;
+    const neto = deposito - servicios;
+    return {
+      bruto, limpieza, baseComision, comision, compras, servicios,
+      depositoCalc, deposito, neto,
+      difDeposito: hayDep ? (c.depositoRecibido - depositoCalc) : null,
+      costoGestion: limpieza + comision,
+      nochesDisponibles: disp, nochesOcupadas: ocup,
+      ocupacion: disp > 0 ? ocup / disp : null,
+      adr: ocup > 0 ? bruto / ocup : null,
+      revpar: disp > 0 ? bruto / disp : null,
+      margen: bruto > 0 ? neto / bruto : null
+    };
+  },
+
+  rcCierres(im){
+    const rc = im.rentaCorta || {};
+    return (rc.cierres || []).slice().sort((a, b) => a.periodo.localeCompare(b.periodo));
+  },
+
+  /* Ultimos n meses cerrados; n nulo devuelve todos. */
+  rcSerie(im, n){
+    const t = this.rcCierres(im);
+    return (n && t.length > n) ? t.slice(t.length - n) : t;
+  },
+
+  /* La ocupacion promedio se pondera por noches disponibles, no como promedio
+     simple de porcentajes: un mes de 28 dias no pesa igual que uno de 31.
+     El cash-on-cash anualiza el neto promedio y declara con cuantos meses se
+     calculo: anualizar tres meses y rotularlo "12M" seria mentir. */
+  rcResumen(im, n){
+    const serie = this.rcSerie(im, n || 12);
+    const m = { meses: serie.length, bruto: 0, costoGestion: 0, servicios: 0, compras: 0,
+                neto: 0, nochesDisp: 0, nochesOcup: 0, ocupacionProm: null,
+                revparProm: null, adrProm: null, netoProm: null, netoAnualizado: 0,
+                cashOnCash: null, margen: null, capitalInvertido: this.rcCapital(im) };
+    if (!serie.length) return m;
+    for (const c of serie) {
+      const d = this.rcCierre(im, c);
+      m.bruto += d.bruto; m.costoGestion += d.costoGestion;
+      m.servicios += d.servicios; m.compras += d.compras; m.neto += d.neto;
+      m.nochesDisp += d.nochesDisponibles; m.nochesOcup += d.nochesOcupadas;
+    }
+    m.ocupacionProm = m.nochesDisp > 0 ? m.nochesOcup / m.nochesDisp : null;
+    m.revparProm = m.nochesDisp > 0 ? m.bruto / m.nochesDisp : null;
+    m.adrProm = m.nochesOcup > 0 ? m.bruto / m.nochesOcup : null;
+    m.netoProm = m.neto / serie.length;
+    m.netoAnualizado = m.netoProm * 12;
+    m.margen = m.bruto > 0 ? m.neto / m.bruto : null;
+    m.cashOnCash = m.capitalInvertido > 0 ? m.netoAnualizado / m.capitalInvertido : null;
+    return m;
+  },
+
+  /* Capital propio invertido: costo + cierre - financiamiento original.
+     Es el denominador del cash-on-cash; sin costo de adquisicion no hay
+     porcentaje que reportar y la ficha muestra un guion, que es lo honesto. */
+  rcCapital(im){
+    const hip = im.hipoteca || { activa: false };
+    const costoTotal = (im.costoAdquisicion || 0) + (im.gastosCierre || 0);
+    const fin = hip.activa ? (hip.montoOriginal || hip.saldoActual || 0) : 0;
+    return Math.max(0, costoTotal - fin);
+  },
+
+  esRentaCorta(im){ return im.modalidadRenta === 'corta'; },
+
+  inmueblesRentaCorta(){ return Store.data.inmuebles.filter(im => im.modalidadRenta === 'corta'); },
+
+  /* Neto del ultimo mes cerrado. Alimenta la tarjeta Rendimiento del mes como
+     linea propia: es efectivo que ya entro al banco, no devengo dentro de un
+     instrumento, y por eso nunca se mezcla con el % anualizado financiero. */
+  rcNetoUltimoMes(){
+    let total = 0, hay = false, periodo = null;
+    for (const im of this.inmueblesRentaCorta()) {
+      const t = this.rcCierres(im);
+      if (!t.length) continue;
+      const ult = t[t.length - 1];
+      total += this.aBase(this.rcCierre(im, ult).neto, im.moneda);
+      hay = true;
+      if (!periodo || ult.periodo > periodo) periodo = ult.periodo;
+    }
+    return { hay, total, periodo };
   },
 
   /* ---------- Conversión ---------- */
@@ -1433,6 +1644,9 @@ const UI = {
   rango: '1a',
   claseGrafico: 'consolidado', // fijo: el gráfico siempre muestra el consolidado
   pie3: 'institucion',
+  rangoRenta: '12m',           // 6M / 12M / Todo en el tab Renta
+  metricaRenta: 'ocupacion',   // segunda serie: ocupacion o RevPAR
+  inmuebleRenta: null,         // id del inmueble mostrado en el tab Renta
   editando: null, // {tipo, id} cuando se edita un activo existente
   charts: {},
   cargandoChart: false,
@@ -1470,6 +1684,11 @@ const UI = {
     UI.segmento('seg-pie3', 'p', v => { UI.pie3 = v; UI.dibujarPies(); });
     // Portafolio
     UI.segmento('seg-agrupar', 'g', v => { UI.agrupar = v; UI.renderPortafolio(); });
+    // Renta corta
+    UI.segmento('seg-renta-rango', 'rr', v => { UI.rangoRenta = v; UI.renderRenta(); });
+    UI.segmento('seg-renta-metrica', 'rm', v => { UI.metricaRenta = v; UI.renderRenta(); });
+    $('renta-sel').addEventListener('change', () => { UI.inmuebleRenta = $('renta-sel').value; UI.renderRenta(); });
+    $('renta-nuevo').addEventListener('click', () => RentaCorta.abrir(UI.inmuebleRenta, null));
     // Formularios
     Forms.init();
     Miles.activar();
@@ -1487,6 +1706,7 @@ const UI = {
     const tab = $('tab-agregar');
     if (tab) tab.style.display = c ? 'none' : '';
     if (c && UI.vista === 'agregar') UI.irA('resumen');
+    // El tab Renta se conserva en modo consulta: Lidia ve el historico, no lo edita.
     UI.renderBanner();
   },
 
@@ -1530,6 +1750,7 @@ const UI = {
     document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
     if (v === 'resumen') UI.renderResumen();
     if (v === 'portafolio') UI.renderPortafolio();
+    if (v === 'renta') UI.renderRenta();
     if (v === 'informe') Informe.renderPreview();
     window.scrollTo(0, 0);
   },
@@ -1537,6 +1758,7 @@ const UI = {
   renderTodo(){
     UI.renderResumen();
     UI.renderPortafolio();
+    if (UI.vista === 'renta') UI.renderRenta();
   },
 
   /* ---------- Resumen ---------- */
@@ -1604,6 +1826,8 @@ const UI = {
       <div class="kv"><span class="k"><b>Entra al banco</b> <span class="tiny">(rentas netas + certificados de pago mensual)</span></span><span class="v num">${Fmt.money(t.rendimientoMesCobro, base)}</span></div>
       <div class="kv"><span class="k">— Rentas netas de inmuebles</span><span class="v num">${Fmt.money(t.inmFlujoAnual/12, base)}</span></div>
       <div class="kv"><span class="k">— Intereses de pago mensual${cfg.aplicarRetencion?' (netos)':''}</span><span class="v num">${Fmt.money(t.rendimientoMesCobro - t.inmFlujoAnual/12, base)}</span></div>
+      ${(() => { const rc = Calc.rcNetoUltimoMes(); return rc.hay
+        ? `<div class="kv"><span class="k">&mdash; Renta corta <span class="tiny">(neto de ${RentaCorta.etiqueta(rc.periodo)})</span></span><span class="v num">${Fmt.money(rc.total, base)}</span></div>` : ''; })()}
       <div class="kv"><span class="k"><b>Se acumula en el instrumento</b> <span class="tiny">(capitalizable y pago al vencimiento)</span></span><span class="v num">${Fmt.money(t.rendimientoMesAcum, base)}</span></div>
       <div class="kv"><span class="k">Interés devengado del 1 a hoy${cfg.aplicarRetencion?' (neto)':''}</span><span class="v num">${Fmt.money(t.interesMesDevNeto, base)}</span></div>
       <div class="tiny" style="margin-top:6px">Interés del mes calendario completo, fijado desde el día 1, neto de la retención de cada instrumento. Rentas netas = NOI − servicio de deuda − ISR alquiler (${cfg.aplicarIsrAlquiler?Fmt.pct(cfg.isrAlquilerEfectivo):'no aplicado'}), prorrateado mensual. Lo acumulado es rendimiento tuyo, pero no entra al banco hasta capitalizar o vencer.</div>`;
@@ -1639,6 +1863,175 @@ const UI = {
 
     UI.dibujarLinea();
     UI.dibujarPies();
+  },
+
+  /* ---------- Renta corta ---------- */
+  /* El tab es una vista, no un silo: los datos viven dentro del inmueble, para
+     que el motor inmobiliario (cap rate, flujo, equity) los lea y no existan
+     dos verdades sobre el mismo apartamento. */
+  renderRenta(){
+    const lista = Calc.inmueblesRentaCorta();
+    const vacio = $('renta-vacio'), cuerpo = $('renta-cuerpo');
+    if (!lista.length) {
+      cuerpo.style.display = 'none';
+      vacio.style.display = 'flex';
+      vacio.innerHTML = Modo.consulta()
+        ? 'No hay inmuebles en modalidad de renta corta.'
+        : 'Aun no hay inmuebles en modalidad de renta corta. Agrega el inmueble desde <b>Agregar</b> y elige <b>Modalidad de renta: corta</b>.';
+      return;
+    }
+    cuerpo.style.display = '';
+    vacio.style.display = 'none';
+
+    if (!UI.inmuebleRenta || !lista.some(x => x.id === UI.inmuebleRenta)) UI.inmuebleRenta = lista[0].id;
+    const sel = $('renta-sel'), card = $('renta-sel-card');
+    card.style.display = lista.length > 1 ? '' : 'none';
+    sel.innerHTML = lista.map(x => `<option value="${x.id}"${x.id === UI.inmuebleRenta ? ' selected' : ''}>${x.nombre}</option>`).join('');
+
+    const im = lista.find(x => x.id === UI.inmuebleRenta);
+    const mon = im.moneda;
+    const cierres = Calc.rcCierres(im);
+
+    // --- Mes mas reciente cerrado: la cascada completa ---
+    const mc = $('renta-mes-card');
+    if (!cierres.length) {
+      mc.innerHTML = `<h3>${im.nombre}</h3><div class="small">Aun no hay meses registrados. Cada inicio de mes, cuando llegue la relacion del gestor, registra el mes con las noches y el ingreso bruto.</div>`;
+    } else {
+      const c = cierres[cierres.length - 1];
+      const d = Calc.rcCierre(im, c);
+      const dif = d.difDeposito;
+      const cuadra = dif === null ? null : Math.abs(dif) < 0.5;
+      mc.innerHTML = `
+        <h3>${RentaCorta.etiqueta(c.periodo)}</h3>
+        <div class="kv"><span class="k">Noches ocupadas</span><span class="v num">${d.nochesOcupadas} de ${d.nochesDisponibles}${d.ocupacion !== null ? ' &middot; ' + Fmt.pct(d.ocupacion, 1) : ''}</span></div>
+        <div class="kv"><span class="k">Ingreso bruto</span><span class="v num">${Fmt.money(d.bruto, mon)}</span></div>
+        <div class="kv"><span class="k">&minus; Limpieza</span><span class="v num">${Fmt.money(d.limpieza, mon)}</span></div>
+        <div class="kv"><span class="k">= Base de comision</span><span class="v num">${Fmt.money(d.baseComision, mon)}</span></div>
+        <div class="kv"><span class="k">&minus; Comision de gestion <span class="tiny">(${Fmt.pct(Calc.rcPct(im))} de la base)</span></span><span class="v num">${Fmt.money(d.comision, mon)}</span></div>
+        <div class="kv"><span class="k">&minus; Compras y refacciones</span><span class="v num">${Fmt.money(d.compras, mon)}</span></div>
+        <div class="kv"><span class="k"><b>= Deposito en cuenta</b></span><span class="v num" style="font-size:16px">${Fmt.money(d.deposito, mon)}</span></div>
+        ${dif === null
+          ? '<div class="tiny" style="margin-top:4px">Deposito calculado. Captura el monto que realmente te depositaron para conciliar contra el banco.</div>'
+          : cuadra
+            ? '<div class="tiny" style="margin-top:4px">Cuadra con el deposito recibido.</div>'
+            : `<div class="alert">El deposito recibido difiere del calculado en ${Fmt.money(dif, mon)}. Revisa la relacion del gestor: puede haber un descuento no reportado.</div>`}
+        <div class="kv"><span class="k">&minus; Servicios fijos</span><span class="v num">${Fmt.money(d.servicios, mon)}</span></div>
+        <div class="kv"><span class="k"><b>= Ingreso neto</b></span><span class="v num" style="font-size:18px;color:var(--verde)">${Fmt.money(d.neto, mon)}</span></div>
+        <div class="kv"><span class="k">Margen neto del mes <span class="tt tiny" title="Ingreso neto / ingreso bruto. Mide eficiencia operativa, no retorno sobre la inversion.">&#9432;</span></span><span class="v num">${d.margen !== null ? Fmt.pct(d.margen, 1) : '—'}</span></div>
+        <div class="kv"><span class="k">ADR &middot; RevPAR <span class="tt tiny" title="ADR: tarifa promedio por noche vendida. RevPAR: ingreso por noche disponible; combina precio y ocupacion y normaliza meses de distinta duracion.">&#9432;</span></span><span class="v num">${d.adr !== null ? Fmt.money(d.adr, mon, 0) : '—'} &middot; ${d.revpar !== null ? Fmt.money(d.revpar, mon, 0) : '—'}</span></div>
+        <div class="btn-row solo-editor" style="margin-top:10px">
+          <button class="btn sec" onclick="RentaCorta.abrir('${im.id}','${c.id}')">Editar este mes</button>
+        </div>`;
+    }
+
+    // --- Resumen 12 meses ---
+    const r = Calc.rcResumen(im, 12);
+    const parcial = r.meses > 0 && r.meses < 12;
+    $('renta-metricas').innerHTML = !r.meses
+      ? '<div class="small">Sin meses cerrados todavia.</div>'
+      : `
+      <div class="kv"><span class="k">Ocupacion promedio <span class="tiny">(ponderada por noches)</span></span><span class="v num">${r.ocupacionProm !== null ? Fmt.pct(r.ocupacionProm, 1) : '—'}</span></div>
+      <div class="kv"><span class="k">Cash-on-cash ${parcial ? `<span class="badge estimado">${r.meses} de 12 meses</span>` : ''} <span class="tt tiny" title="Neto promedio mensual anualizado / capital propio invertido (costo + gastos de cierre - financiamiento original).">&#9432;</span></span><span class="v num">${r.cashOnCash !== null ? Fmt.pct(r.cashOnCash) : '—'}</span></div>
+      <div class="kv"><span class="k">Ingreso neto promedio mensual</span><span class="v num">${Fmt.money(r.netoProm, mon)}</span></div>
+      <div class="kv"><span class="k">RevPAR promedio</span><span class="v num">${r.revparProm !== null ? Fmt.money(r.revparProm, mon, 0) : '—'}</span></div>
+      <div class="kv"><span class="k">Margen neto acumulado</span><span class="v num">${r.margen !== null ? Fmt.pct(r.margen, 1) : '—'}</span></div>
+      ${r.capitalInvertido <= 0 ? '<div class="tiny" style="margin-top:6px">Sin costo de adquisicion capturado no hay denominador para el cash-on-cash. Editalo en el inmueble para que la cifra aparezca.</div>' : ''}
+      ${parcial ? `<div class="tiny" style="margin-top:6px">El cash-on-cash se calculo con ${r.meses} mes${r.meses === 1 ? '' : 'es'} y se anualizo. Con menos de doce meses no cubre la estacionalidad completa.</div>` : ''}
+      <div class="tiny" style="margin-top:6px">El ISR de alquiler configurado en Ajustes no se aplica a renta corta: el tratamiento fiscal difiere. Carga los impuestos que pagues como gasto del mes.</div>`;
+
+    // --- Lista de meses ---
+    $('renta-lista').innerHTML = !cierres.length
+      ? '<div class="small">Aun sin registros.</div>'
+      : cierres.slice().reverse().map(c => {
+          const d = Calc.rcCierre(im, c);
+          return `<div class="kv" style="cursor:pointer" onclick="RentaCorta.abrir('${im.id}','${c.id}')">
+            <span class="k">${RentaCorta.etiqueta(c.periodo)} <span class="tiny">${d.ocupacion !== null ? Fmt.pct(d.ocupacion, 0) : '—'}</span></span>
+            <span class="v num">${Fmt.money(d.neto, mon)}</span></div>`;
+        }).join('');
+
+    UI.dibujarRenta(im);
+  },
+
+  dibujarRenta(im){
+    const n = UI.rangoRenta === '6m' ? 6 : UI.rangoRenta === '12m' ? 12 : null;
+    const serie = Calc.rcSerie(im, n);
+    const mon = im.moneda;
+    const esOcup = UI.metricaRenta === 'ocupacion';
+    $('renta-ocup-titulo').textContent = esOcup ? 'Ocupacion' : 'RevPAR';
+    $('renta-ocup-nota').innerHTML = esOcup
+      ? 'Noches ocupadas sobre noches disponibles. Las noches que bloqueas para uso propio se descuentan del denominador: tu propio uso no es una vacancia comercial.'
+      : 'Ingreso por noche disponible. Cuando un mes rinde distinto, RevPAR contra ocupacion dice si fue por precio o por volumen.';
+
+    if (typeof Chart === 'undefined' || !serie.length) {
+      ['chart-renta-neto','chart-renta-ocup','chart-renta-dona'].forEach(id => {
+        if (UI.charts[id]) { UI.charts[id].destroy(); delete UI.charts[id]; }
+      });
+      $('renta-dona-detalle').innerHTML = serie.length ? '' : '<div class="small">Sin meses cerrados para graficar.</div>';
+      if (!serie.length) return;
+      UI.reintentarGraficos();
+      return;
+    }
+
+    const labels = serie.map(c => RentaCorta.etiquetaCorta(c.periodo));
+    const datos = serie.map(c => Calc.rcCierre(im, c));
+
+    UI.chart('chart-renta-neto', {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Ingreso neto', data: datos.map(d => d.neto),
+        borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.06)', fill: true,
+        tension: .25, pointRadius: 3, borderWidth: 2 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: c => Fmt.money(c.parsed.y, mon) } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 7, font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { font: { size: 10 }, callback: v => Fmt.num(v/1000, 0) + 'k' }, grid: { color: 'rgba(13,64,41,.05)' } }
+        }
+      }
+    });
+
+    UI.chart('chart-renta-ocup', {
+      type: 'line',
+      data: { labels, datasets: [{ label: esOcup ? 'Ocupacion' : 'RevPAR',
+        data: datos.map(d => esOcup ? (d.ocupacion !== null ? d.ocupacion * 100 : null) : d.revpar),
+        borderColor: '#1ec677', backgroundColor: 'rgba(30,198,119,.08)', fill: true,
+        tension: .25, pointRadius: 3, borderWidth: 2, spanGaps: true }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: c => esOcup ? Fmt.num(c.parsed.y, 1) + '%' : Fmt.money(c.parsed.y, mon, 0) } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 7, font: { size: 10 } }, grid: { display: false } },
+          y: { beginAtZero: true, suggestedMax: esOcup ? 100 : undefined,
+               ticks: { font: { size: 10 }, callback: v => esOcup ? Fmt.num(v, 0) + '%' : Fmt.num(v/1000, 0) + 'k' },
+               grid: { color: 'rgba(13,64,41,.05)' } }
+        }
+      }
+    });
+
+    // --- Anillo: los cuatro segmentos suman el 100% del bruto. Si se dejaran
+    //     fuera las compras, en el mes que compras un equipo el anillo mostraria
+    //     porcentajes que no cierran, justo cuando mas importa entenderlo.
+    const r = Calc.rcResumen(im, n || null);
+    const seg = [
+      ['Ingreso neto', Math.max(0, r.neto), '#1ec677'],
+      ['Costo de gestion', r.costoGestion, '#0d4029'],
+      ['Gastos fijos / servicios', r.servicios, '#d98b0d'],
+      ['Compras y refacciones', r.compras, '#6b7f74']
+    ].filter(x => x[1] > 0);
+    UI.chart('chart-renta-dona', {
+      type: 'doughnut',
+      data: { labels: seg.map(x => x[0]), datasets: [{ data: seg.map(x => x[1]), backgroundColor: seg.map(x => x[2]), borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+          tooltip: { callbacks: { label: c => ` ${seg[c.dataIndex][0]}: ${Fmt.money(c.parsed, mon)} (${Fmt.pct(r.bruto ? c.parsed / r.bruto : 0, 1)})` } } } }
+    });
+    $('renta-dona-detalle').innerHTML = seg.map(x =>
+      `<div class="kv"><span class="k">${x[0]}</span><span class="v num">${Fmt.money(x[1], mon)} &middot; ${Fmt.pct(r.bruto ? x[1] / r.bruto : 0, 1)}</span></div>`
+    ).join('') + `<div class="tiny" style="margin-top:6px">Sobre un bruto de ${Fmt.money(r.bruto, mon)} en ${r.meses} mes${r.meses === 1 ? '' : 'es'}. Los cuatro segmentos suman el 100% del bruto.</div>`;
   },
 
   /* ---------- Gráfico de línea ---------- */
@@ -2218,7 +2611,8 @@ const Forms = {
     ['f-capital','f-ganancia','f-inicio','f-venc','f-base'].forEach(id => $(id).addEventListener('change', () => Forms.previewFondo()));
     ['i-renta','i-vac','i-g-mant','i-g-adm','i-g-seg','i-g-otros','i-ipi','i-rep','i-hip-cuota','i-vm','i-estado','i-hip'].forEach(id => $(id).addEventListener('input', () => Forms.previewInm()));
     $('i-hip').addEventListener('change', () => { $('i-bloque-hip').style.display = $('i-hip').checked ? 'block' : 'none'; Forms.previewInm(); });
-    $('i-estado').addEventListener('change', () => { $('i-bloque-renta').style.display = $('i-estado').value === 'rentado' ? 'block' : 'none'; Forms.previewInm(); });
+    $('i-estado').addEventListener('change', () => { Forms.mostrarBloquesInm(); Forms.previewInm(); });
+    $('i-modalidad-renta').addEventListener('change', () => { Forms.mostrarBloquesInm(); Forms.previewInm(); });
   },
 
   mostrarForm(){
@@ -2231,6 +2625,30 @@ const Forms = {
   },
 
   num(id){ const v = Fmt.parse($(id).value); return isNaN(v) ? null : v; },
+
+  /* Un inmueble de renta corta no tiene renta mensual, dia de cobro ni contrato:
+     pedirlos obligaria a inventar una cifra ficticia que despues contamina el
+     cap rate y el flujo del Resumen. Por eso el bloque se oculta entero. */
+  mostrarBloquesInm(){
+    const rentado = $('i-estado').value === 'rentado';
+    const corta = $('i-modalidad-renta').value === 'corta';
+    $('i-bloque-renta').style.display = (rentado && !corta) ? 'block' : 'none';
+    $('i-bloque-corta').style.display = (rentado && corta) ? 'block' : 'none';
+  },
+
+  /* Plantilla de servicios fijos: una linea por concepto, "Concepto, monto". */
+  leerServicios(txt){
+    return (txt || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      const i = l.lastIndexOf(',');
+      const concepto = (i >= 0 ? l.slice(0, i) : l).trim();
+      const monto = i >= 0 ? Fmt.parse(l.slice(i + 1)) : 0;
+      return { concepto, monto: isNaN(monto) ? 0 : monto };
+    }).filter(x => x.concepto);
+  },
+
+  escribirServicios(arr){
+    return (arr || []).map(x => `${x.concepto}, ${x.monto || 0}`).join('\n');
+  },
 
   previewCert(){
     const cap = Forms.num('c-capital'), tasa = Forms.num('c-tasa');
@@ -2385,6 +2803,7 @@ const Forms = {
         seguro: Forms.num('i-g-seg') || 0, otros: Forms.num('i-g-otros') || 0
       },
       gastosAnuales: { ipi: Forms.num('i-ipi') || 0, reparacionesEstimadas: Forms.num('i-rep') || 0 },
+      modalidadRenta: $('i-modalidad-renta').value,
       hipoteca: hipActiva ? {
         activa: true, institucion: $('i-hip-inst').value.trim(),
         saldoActual: Forms.num('i-hip-saldo') || 0,
@@ -2394,6 +2813,14 @@ const Forms = {
         montoOriginal: Forms.num('i-hip-orig') || null
       } : { activa: false }
     };
+    if (im.modalidadRenta === 'corta') {
+      const pct = Forms.num('i-rc-comision');
+      im.rentaCorta = {
+        comisionPorcentaje: (pct === null ? 20 : pct) / 100,
+        serviciosPlantilla: Forms.leerServicios($('i-rc-servicios').value),
+        cierres: []   // los cierres existentes se conservan al guardar, ver guardarInmueble
+      };
+    }
     if (validar && hipActiva && im.hipoteca.saldoActual > im.valorMercadoEstimado) {
       // No bloquear: advertir equity negativo
       err.textContent = 'Aviso: el saldo de la hipoteca supera el valor de mercado — el equity quedará negativo. Se guarda igual.';
@@ -2408,12 +2835,17 @@ const Forms = {
     const base = UI.editando && UI.editando.clase === 'inmueble'
       ? Store.data.inmuebles.find(x => x.id === UI.editando.id) : null;
     if (base) {
+      // Los cierres mensuales son datos capturados, no configuracion: sobreviven
+      // a cualquier edicion del inmueble.
+      const cierresPrev = ((base.rentaCorta || {}).cierres) || [];
       const conservar = { id: base.id, historialRenta: base.historialRenta || [], notas: undefined };
       Object.assign(base, im, { id: conservar.id, historialRenta: conservar.historialRenta });
+      if (base.rentaCorta) base.rentaCorta.cierres = cierresPrev;
       base.notas = $('i-notas').value.trim();
     } else {
       im.id = Store.uuid();
       im.historialRenta = [];
+      if (!im.rentaCorta) im.rentaCorta = { comisionPorcentaje: 0.20, serviciosPlantilla: [], cierres: [] };
       im.notas = $('i-notas').value.trim();
       Store.data.inmuebles.push(im);
     }
@@ -2488,7 +2920,11 @@ const Forms = {
     Miles.set('i-vm', im.valorMercadoEstimado); $('i-vm-fecha').value = im.valorMercadoFecha || '';
     $('i-apr').value = ((im.apreciacionAnualEstimada||0)*100).toFixed(2);
     $('i-estado').value = im.estado;
-    $('i-bloque-renta').style.display = im.estado === 'rentado' ? 'block' : 'none';
+    $('i-modalidad-renta').value = im.modalidadRenta || 'larga';
+    const rcCfg = im.rentaCorta || {};
+    $('i-rc-comision').value = ((rcCfg.comisionPorcentaje != null ? rcCfg.comisionPorcentaje : 0.20) * 100).toFixed(2);
+    $('i-rc-servicios').value = Forms.escribirServicios(rcCfg.serviciosPlantilla);
+    Forms.mostrarBloquesInm();
     const r = im.renta || {};
     Miles.set('i-renta', r.montoMensual || ''); $('i-dia-cobro').value = r.diaCobro || '';
     $('i-inquilino').value = r.inquilino || ''; $('i-pj').checked = !!r.inquilinoEsPersonaJuridica;
@@ -2508,6 +2944,204 @@ const Forms = {
     $('i-notas').value = im.notas || '';
     Forms.previewInm();
     window.scrollTo(0,0);
+  }
+};
+
+
+/* ============ Renta corta — captura del cierre mensual ============
+   Se guardan solo insumos: noches, bruto, limpieza, comision, lineas de gasto y
+   el deposito recibido. Ocupacion, ADR, RevPAR, neto, margen y cash-on-cash se
+   derivan en cada render y nunca se persisten, igual que en el resto de la app. */
+const RentaCorta = {
+  meses: ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
+
+  etiqueta(p){
+    const [y, m] = p.split('-').map(Number);
+    const n = RentaCorta.meses[m - 1] || '';
+    return n.charAt(0).toUpperCase() + n.slice(1) + ' ' + y;
+  },
+  etiquetaCorta(p){
+    const [y, m] = p.split('-').map(Number);
+    return (RentaCorta.meses[m - 1] || '').slice(0, 3) + ' ' + String(y).slice(2);
+  },
+  /* Noches disponibles por defecto: los dias del mes. Editable, porque las
+     noches que bloqueas para uso propio o reparacion no son vacancia comercial. */
+  diasDelMes(p){
+    const [y, m] = p.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  },
+  periodoAnterior(){
+    const d = new Date();
+    d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  },
+
+  lineas(arr, prefijo){
+    return (arr || []).map((x, i) => `
+      <div class="fila2" style="margin-bottom:6px">
+        <div><input id="${prefijo}-c-${i}" value="${(x.concepto || '').replace(/"/g, '&quot;')}" placeholder="Concepto"></div>
+        <div><input id="${prefijo}-m-${i}" inputmode="decimal" data-miles value="${x.monto ? Fmt.agrupar(String(x.monto)) : ''}" placeholder="0"></div>
+      </div>`).join('');
+  },
+
+  abrir(imId, cierreId){
+    if (Modo.consulta()) return;
+    const im = Store.data.inmuebles.find(x => x.id === imId);
+    if (!im) return;
+    const rc = im.rentaCorta || {};
+    const existente = cierreId ? (rc.cierres || []).find(c => c.id === cierreId) : null;
+    const periodo = existente ? existente.periodo : RentaCorta.periodoAnterior();
+    const servicios = existente ? (existente.servicios || [])
+                                : (rc.serviciosPlantilla || []).map(x => ({ concepto: x.concepto, monto: x.monto || 0 }));
+    const compras = existente ? (existente.compras || []) : [];
+    RentaCorta.buffer = { imId, cierreId: cierreId || null, servicios: servicios.slice(), compras: compras.slice() };
+    const v = k => existente && existente[k] != null ? existente[k] : '';
+
+    UI.abrirSheet(existente ? 'Editar ' + RentaCorta.etiqueta(periodo) : 'Registrar mes', `
+      <fieldset>
+        <div class="legend">Periodo y ocupacion</div>
+        <label>Mes</label>
+        <input id="rc-periodo" type="month" value="${periodo}">
+        <div class="fila2">
+          <div><label>Noches disponibles</label><input id="rc-disp" inputmode="numeric" value="${existente ? (existente.nochesDisponibles || '') : RentaCorta.diasDelMes(periodo)}"></div>
+          <div><label>Noches ocupadas</label><input id="rc-ocup" inputmode="numeric" value="${v('nochesOcupadas')}"></div>
+        </div>
+        <div class="tiny" style="margin-top:5px">Si bloqueaste noches para uso propio o reparacion, restalas de las disponibles.</div>
+      </fieldset>
+
+      <fieldset>
+        <div class="legend">Relacion del gestor</div>
+        <label>Ingreso bruto del mes</label>
+        <input id="rc-bruto" inputmode="decimal" data-miles value="${existente && existente.ingresoBruto ? Fmt.agrupar(String(existente.ingresoBruto)) : ''}">
+        <label>Gastos de limpieza</label>
+        <input id="rc-limpieza" inputmode="decimal" data-miles value="${existente && existente.limpieza ? Fmt.agrupar(String(existente.limpieza)) : ''}">
+        <label>Comision de gestion</label>
+        <input id="rc-comision" inputmode="decimal" data-miles value="${existente && existente.comisionMonto != null ? Fmt.agrupar(String(existente.comisionMonto)) : ''}" placeholder="Se calcula sola">
+        <div class="tiny" style="margin-top:5px">Vacio = ${Fmt.pct(Calc.rcPct(im))} sobre el bruto menos la limpieza. Escribe un monto solo si el gestor cobro algo distinto este mes.</div>
+      </fieldset>
+
+      <fieldset>
+        <div class="legend">Compras y refacciones</div>
+        <div id="rc-compras">${RentaCorta.lineas(compras, 'rc-comp')}</div>
+        <button class="btn sec mini" onclick="RentaCorta.agregar('compras')">Agregar linea</button>
+      </fieldset>
+
+      <fieldset>
+        <div class="legend">Deposito recibido</div>
+        <input id="rc-deposito" inputmode="decimal" data-miles value="${existente && existente.depositoRecibido != null ? Fmt.agrupar(String(existente.depositoRecibido)) : ''}" placeholder="Lo que entro al banco">
+        <div class="tiny" style="margin-top:5px">Este es el punto de conciliacion. Si no coincide con lo calculado, la diferencia se muestra en la ficha en vez de resolverse sola.</div>
+      </fieldset>
+
+      <fieldset>
+        <div class="legend">Servicios fijos que pagas tu</div>
+        <div id="rc-servicios">${RentaCorta.lineas(servicios, 'rc-serv')}</div>
+        <button class="btn sec mini" onclick="RentaCorta.agregar('servicios')">Agregar linea</button>
+      </fieldset>
+
+      <label>Notas</label><textarea id="rc-notas" rows="2">${existente ? (existente.notas || '') : ''}</textarea>
+      <div class="err" id="rc-err"></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn" onclick="RentaCorta.guardar()">Guardar mes</button>
+        ${existente ? `<button class="btn peligro" onclick="RentaCorta.eliminar()">Eliminar</button>` : ''}
+      </div>
+    `);
+    Miles.activar($('sheet-body'));
+    $('rc-periodo').addEventListener('change', () => {
+      const p = $('rc-periodo').value;
+      if (p && !$('rc-disp').value) $('rc-disp').value = RentaCorta.diasDelMes(p);
+    });
+  },
+
+  /* Antes de repintar las lineas hay que leer lo ya escrito, o agregar una fila
+     borraria lo que el usuario tenia a medio capturar. */
+  capturarLineas(){
+    const b = RentaCorta.buffer;
+    b.compras = b.compras.map((x, i) => ({
+      concepto: ($('rc-comp-c-' + i) || {}).value || x.concepto,
+      monto: RentaCorta.n('rc-comp-m-' + i) || 0
+    }));
+    b.servicios = b.servicios.map((x, i) => ({
+      concepto: ($('rc-serv-c-' + i) || {}).value || x.concepto,
+      monto: RentaCorta.n('rc-serv-m-' + i) || 0
+    }));
+  },
+
+  n(id){ const el = $(id); if (!el) return null; const v = Fmt.parse(el.value); return isNaN(v) ? null : v; },
+
+  agregar(cual){
+    RentaCorta.capturarLineas();
+    const b = RentaCorta.buffer;
+    b[cual].push({ concepto: '', monto: 0 });
+    const cont = $(cual === 'compras' ? 'rc-compras' : 'rc-servicios');
+    cont.innerHTML = RentaCorta.lineas(b[cual], cual === 'compras' ? 'rc-comp' : 'rc-serv');
+    Miles.activar(cont);
+  },
+
+  guardar(){
+    if (Modo.consulta()) return;
+    const b = RentaCorta.buffer;
+    const im = Store.data.inmuebles.find(x => x.id === b.imId);
+    if (!im) return;
+    const err = $('rc-err');
+    err.classList.remove('show'); err.textContent = '';
+    const fallo = m => { err.textContent = m; err.classList.add('show'); return null; };
+
+    const periodo = $('rc-periodo').value;
+    if (!periodo) return fallo('Elige el mes.');
+    const disp = RentaCorta.n('rc-disp');
+    const ocup = RentaCorta.n('rc-ocup');
+    const bruto = RentaCorta.n('rc-bruto');
+    if (bruto === null || bruto < 0) return fallo('El ingreso bruto es obligatorio.');
+    if (disp === null || disp <= 0) return fallo('Las noches disponibles deben ser mayores que cero.');
+    if (ocup === null || ocup < 0) return fallo('Captura las noches ocupadas.');
+    if (ocup > disp) return fallo('Las noches ocupadas no pueden superar las disponibles.');
+
+    RentaCorta.capturarLineas();
+    im.rentaCorta = im.rentaCorta || { comisionPorcentaje: 0.20, serviciosPlantilla: [], cierres: [] };
+    im.rentaCorta.cierres = im.rentaCorta.cierres || [];
+
+    // Un solo cierre por periodo: si ya existe otro con el mismo mes, se avisa.
+    const choque = im.rentaCorta.cierres.find(c => c.periodo === periodo && c.id !== b.cierreId);
+    if (choque) return fallo('Ya hay un mes registrado para ' + RentaCorta.etiqueta(periodo) + '. Editalo desde la lista.');
+
+    const limpieza = RentaCorta.n('rc-limpieza') || 0;
+    const comisionTxt = ($('rc-comision').value || '').trim();
+    const depositoTxt = ($('rc-deposito').value || '').trim();
+
+    const datos = {
+      periodo,
+      nochesDisponibles: disp,
+      nochesOcupadas: ocup,
+      ingresoBruto: bruto,
+      limpieza,
+      comisionMonto: comisionTxt === '' ? null : (RentaCorta.n('rc-comision') || 0),
+      compras: b.compras.filter(x => (x.concepto || '').trim() || x.monto),
+      depositoRecibido: depositoTxt === '' ? null : (RentaCorta.n('rc-deposito') || 0),
+      servicios: b.servicios.filter(x => (x.concepto || '').trim() || x.monto),
+      notas: $('rc-notas').value.trim()
+    };
+
+    const prev = b.cierreId ? im.rentaCorta.cierres.find(c => c.id === b.cierreId) : null;
+    if (prev) Object.assign(prev, datos);
+    else im.rentaCorta.cierres.push(Object.assign({ id: Store.uuid() }, datos));
+
+    Store.save();
+    UI.cerrarSheet();
+    UI.renderTodo();
+    UI.renderRenta();
+  },
+
+  eliminar(){
+    if (Modo.consulta()) return;
+    const b = RentaCorta.buffer;
+    const im = Store.data.inmuebles.find(x => x.id === b.imId);
+    if (!im || !b.cierreId) return;
+    if (!confirm('Eliminar este mes del historico? No se puede deshacer.')) return;
+    im.rentaCorta.cierres = im.rentaCorta.cierres.filter(c => c.id !== b.cierreId);
+    Store.save();
+    UI.cerrarSheet();
+    UI.renderTodo();
+    UI.renderRenta();
   }
 };
 
