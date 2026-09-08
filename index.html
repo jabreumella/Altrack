@@ -261,6 +261,9 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .legend{font-size:13px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.5px;padding:0 0 2px}
 .legend + .legend, fieldset > .legend ~ .legend{margin-top:14px}
 .fila2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Concepto / monto / moneda: la moneda va por linea porque Edesur, Claro y el
+   mantenimiento se pagan en RD$ aunque el inmueble se mida en US$. */
+.fila3m{display:grid;grid-template-columns:1fr 92px 76px;gap:8px;align-items:center}
 .switch-row{display:flex;justify-content:space-between;align-items:center;min-height:44px;font-size:14px;gap:10px}
 .switch{position:relative;width:50px;height:30px;flex-shrink:0}
 .switch input{position:absolute;opacity:0;width:100%;height:100%;z-index:2;margin:0}
@@ -401,7 +404,7 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
     <button class="card" style="width:100%;text-align:left" id="card-flujo">
       <h3>Rendimiento del mes &#9432;</h3>
       <div class="num" style="font-size:clamp(20px,6.6vw,28px);font-weight:700;color:var(--verde)" id="flujo-total"></div>
-      <div class="small">Interés del mes completo + rentas netas, con corte al día 1</div>
+      <div class="small">Interés financiero del mes completo, con corte al día 1</div>
       <div id="flujo-desglose" style="display:none;margin-top:10px"></div>
     </button>
 
@@ -474,24 +477,25 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
         <select id="renta-sel"></select>
       </div>
 
-      <div class="card" id="renta-mes-card"></div>
-
+      <!-- 1. Ingreso mensual: neto, bruto o ambos, con el mismo eje que el
+           grafico de ocupacion para poder leerlos en vertical. -->
       <div class="card">
-        <h3>Resumen de los ultimos 12 meses</h3>
-        <div id="renta-metricas"></div>
-      </div>
-
-      <div class="card">
-        <h3>Ingreso neto mensual</h3>
+        <h3 id="renta-serie-titulo">Ingreso neto mensual</h3>
+        <div class="seg" id="seg-renta-serie">
+          <button data-rs="neto" class="active">Neto</button>
+          <button data-rs="bruto">Bruto</button>
+          <button data-rs="ambos">Ambos</button>
+        </div>
         <div class="seg" id="seg-renta-rango">
           <button data-rr="6m">6M</button>
           <button data-rr="12m" class="active">12M</button>
           <button data-rr="todo">Todo</button>
         </div>
         <div class="chart-box"><canvas id="chart-renta-neto"></canvas></div>
-        <div class="tiny" style="margin-top:6px">Solo meses cerrados. El eje horizontal es el mismo del grafico de abajo, para leer los dos en vertical.</div>
+        <div class="tiny" id="renta-serie-nota" style="margin-top:6px"></div>
       </div>
 
+      <!-- 2. Ocupacion / RevPAR -->
       <div class="card">
         <h3 id="renta-ocup-titulo">Ocupacion</h3>
         <div class="seg" id="seg-renta-metrica">
@@ -502,10 +506,19 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
         <div class="tiny" id="renta-ocup-nota" style="margin-top:6px"></div>
       </div>
 
+      <!-- 3. Composicion del bruto -->
       <div class="card">
         <h3>Composicion del bruto</h3>
         <div class="chart-box"><canvas id="chart-renta-dona"></canvas></div>
         <div id="renta-dona-detalle" style="margin-top:8px"></div>
+      </div>
+
+      <!-- 4. Detalle del mes mas reciente cerrado -->
+      <div class="card" id="renta-mes-card"></div>
+
+      <div class="card">
+        <h3>Resumen de los ultimos 12 meses</h3>
+        <div id="renta-metricas"></div>
       </div>
 
       <button class="btn solo-editor" id="renta-nuevo">Registrar mes</button>
@@ -646,9 +659,9 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
         <input id="i-rc-comision" inputmode="decimal" placeholder="20.00">
         <div class="tiny" style="margin-top:5px">Se aplica sobre el ingreso bruto <b>despues</b> de descontar la limpieza. El monto queda editable en cada mes.</div>
         <label>Servicios fijos que se precargan cada mes</label>
-        <div class="tiny" style="margin-bottom:6px">Un concepto por linea, con el monto separado por coma: <code>Edesur, 5800</code></div>
-        <textarea id="i-rc-servicios" rows="4" placeholder="Edesur, 0&#10;Cuota mantenimiento, 0&#10;Internet Claro, 0&#10;IRIG (camaras), 0"></textarea>
-        <div class="tiny" style="margin-top:5px">Son solo la plantilla: al abrir un mes se copian y ahi se ajustan los montos reales sin tocar esta lista.</div>
+        <div class="tiny" style="margin-bottom:6px">Un concepto por linea: <code>Concepto, monto, moneda</code>. Ejemplo: <code>Edesur, 5800, DOP</code>. Si omites la moneda se asume la del inmueble.</div>
+        <textarea id="i-rc-servicios" rows="4" placeholder="Edesur, 0, DOP&#10;Cuota mantenimiento, 0, DOP&#10;Internet Claro, 0, DOP&#10;IRIG (camaras), 0, DOP"></textarea>
+        <div class="tiny" style="margin-top:5px">Son solo la plantilla: al abrir un mes se copian y ahi se ajustan los montos y la moneda reales sin tocar esta lista. Las lineas en RD$ de un inmueble en US$ se convierten con la tasa de Ajustes.</div>
       </fieldset>
       <fieldset id="i-bloque-renta">
         <div class="legend">Renta</div>
@@ -721,7 +734,9 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 <nav class="tabbar">
   <button data-v="resumen" class="active"><span class="ic">&#8962;</span>Resumen</button>
   <button data-v="portafolio"><span class="ic">&#9776;</span>Portafolio</button>
-  <button data-v="renta" id="tab-renta"><span class="ic">&#127968;</span>Renta</button>
+  <!-- Sin icono: solo la palabra. El espaciador de 18px mantiene la etiqueta a
+       la misma altura que la de los demas tabs. -->
+  <button data-v="renta" id="tab-renta"><span class="ic" aria-hidden="true" style="height:18px"></span>Renta</button>
   <button data-v="agregar" id="tab-agregar"><span class="ic">&#65291;</span>Agregar</button>
   <button data-v="informe"><span class="ic">&#128196;</span>Informe</button>
 </nav>
@@ -877,7 +892,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 10,
+  version: 11,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -1068,6 +1083,24 @@ const Store = {
         if (!im.rentaCorta) im.rentaCorta = { comisionPorcentaje: 0.20, serviciosPlantilla: [], cierres: [] };
       });
       d.version = 10;
+    }
+
+    if (d.version < 11) {
+      // Moneda por linea de gasto en renta corta. Edesur, Claro y el
+      // mantenimiento se pagan en RD$ aunque el apartamento se mida en US$:
+      // hasta ahora la app asumia en silencio que toda linea estaba en la
+      // moneda del inmueble, lo que inflaba o desinflaba el neto segun el caso.
+      // Se siembra la moneda del inmueble en cada linea existente, lo que
+      // preserva EXACTAMENTE las cifras actuales: la conversion solo entra en
+      // juego cuando tu marques una linea con otra moneda.
+      d.inmuebles.forEach(im => {
+        const rc = im.rentaCorta;
+        if (!rc) return;
+        const sellar = arr => (arr || []).forEach(x => { if (!x.moneda) x.moneda = im.moneda || 'DOP'; });
+        sellar(rc.serviciosPlantilla);
+        (rc.cierres || []).forEach(c => { sellar(c.servicios); sellar(c.compras); });
+      });
+      d.version = 11;
     }
 
     d.titulares = d.titulares || base.titulares.slice();
@@ -1383,8 +1416,15 @@ const Calc = {
     return rc.comisionPorcentaje != null ? rc.comisionPorcentaje : 0.20;
   },
 
+  /* Cada linea de gasto lleva su propia moneda y se convierte a la del
+     inmueble antes de sumar. La bandera "convertido" recuerda cuanto de esa
+     suma venia de otra moneda, para declararlo en pantalla en vez de mezclar
+     pesos y dolares en silencio. */
   rcCierre(im, c){
-    const suma = a => (a || []).reduce((t, x) => t + (x.monto || 0), 0);
+    const mon = im.moneda || 'DOP';
+    const suma = a => (a || []).reduce((t, x) => t + Calc.conv(x.monto || 0, x.moneda || mon, mon), 0);
+    const otraMoneda = a => (a || []).reduce((t, x) =>
+      t + ((x.moneda && x.moneda !== mon) ? Calc.conv(x.monto || 0, x.moneda, mon) : 0), 0);
     const bruto = c.ingresoBruto || 0;
     const limpieza = c.limpieza || 0;
     const baseComision = bruto - limpieza;
@@ -1399,6 +1439,8 @@ const Calc = {
     const neto = deposito - servicios;
     return {
       bruto, limpieza, baseComision, comision, compras, servicios,
+      serviciosConvertidos: otraMoneda(c.servicios),
+      comprasConvertidas: otraMoneda(c.compras),
       depositoCalc, deposito, neto,
       difDeposito: hayDep ? (c.depositoRecibido - depositoCalc) : null,
       costoGestion: limpieza + comision,
@@ -1462,9 +1504,9 @@ const Calc = {
 
   inmueblesRentaCorta(){ return Store.data.inmuebles.filter(im => im.modalidadRenta === 'corta'); },
 
-  /* Neto del ultimo mes cerrado. Alimenta la tarjeta Rendimiento del mes como
-     linea propia: es efectivo que ya entro al banco, no devengo dentro de un
-     instrumento, y por eso nunca se mezcla con el % anualizado financiero. */
+  /* Neto del ultimo mes cerrado. Se muestra en la tarjeta Rendimiento del mes
+     como linea de REFERENCIA que no suma al total: es efectivo que ya entro al
+     banco, no devengo dentro de un instrumento. */
   rcNetoUltimoMes(){
     let total = 0, hay = false, periodo = null;
     for (const im of this.inmueblesRentaCorta()) {
@@ -1478,14 +1520,21 @@ const Calc = {
     return { hay, total, periodo };
   },
 
-  /* ---------- Conversión ---------- */
-  aBase(monto, moneda){
+  /* ---------- Conversión ----------
+     conv() convierte entre dos monedas cualesquiera con la tasa manual de
+     Ajustes; aBase() es el caso particular de convertir a la moneda base. Se
+     usa, entre otras cosas, para los gastos de renta corta que se pagan en RD$
+     dentro de un inmueble medido en US$. */
+  conv(monto, de, a){
     const cfg = this.cfg();
-    if (moneda === cfg.monedaBase) return monto;
-    if (moneda === 'USD' && cfg.monedaBase === 'DOP') return monto * cfg.tasaCambio;
-    if (moneda === 'DOP' && cfg.monedaBase === 'USD') return monto / cfg.tasaCambio;
-    return monto;
+    const m = monto || 0;
+    if (!de || !a || de === a) return m;
+    if (de === 'USD' && a === 'DOP') return m * cfg.tasaCambio;
+    if (de === 'DOP' && a === 'USD') return m / cfg.tasaCambio;
+    return m;
   },
+
+  aBase(monto, moneda){ return this.conv(monto, moneda, this.cfg().monedaBase); },
 
   tasaEnFecha(fechaISO){
     const cfg = this.cfg();
@@ -1582,8 +1631,13 @@ const Calc = {
     return {
       finDOP, finUSD, finBase, capitalAportado, rendBruto, rendNeto,
       interesMesDev, interesMesProy, interesMesDevNeto,
-      rendimientoMes: interesMesProyNeto + inmFlujoAnual / 12,
-      rendimientoMesCobro: interesMesCobroNeto + inmFlujoAnual / 12,
+      // Rendimiento del mes = SOLO financiero. Las rentas netas de inmuebles no
+      // se suman aqui (decision del usuario): viven en la tarjeta de Portafolio,
+      // en el flujo de caja mensual y en el tab Renta. Mezclar devengo de
+      // instrumentos con flujo de alquiler en una sola cifra hacia dificil leer
+      // cual de los dos se movio.
+      rendimientoMes: interesMesProyNeto,
+      rendimientoMesCobro: interesMesCobroNeto,
       rendimientoMesAcum: interesMesAcumNeto,
       anualizadoPond: sumaValAnu > 0 ? sumaAnu / sumaValAnu : null,
       tasaPondDOP: sumaCapDOP > 0 ? sumaTasaCapDOP / sumaCapDOP : null,
@@ -1647,6 +1701,7 @@ const UI = {
   rangoRenta: '12m',           // 6M / 12M / Todo en el tab Renta
   metricaRenta: 'ocupacion',   // segunda serie: ocupacion o RevPAR
   inmuebleRenta: null,         // id del inmueble mostrado en el tab Renta
+  serieRenta: 'neto',          // ingreso mensual: neto / bruto / ambos
   editando: null, // {tipo, id} cuando se edita un activo existente
   charts: {},
   cargandoChart: false,
@@ -1687,6 +1742,7 @@ const UI = {
     // Renta corta
     UI.segmento('seg-renta-rango', 'rr', v => { UI.rangoRenta = v; UI.renderRenta(); });
     UI.segmento('seg-renta-metrica', 'rm', v => { UI.metricaRenta = v; UI.renderRenta(); });
+    UI.segmento('seg-renta-serie', 'rs', v => { UI.serieRenta = v; UI.renderRenta(); });
     $('renta-sel').addEventListener('change', () => { UI.inmuebleRenta = $('renta-sel').value; UI.renderRenta(); });
     $('renta-nuevo').addEventListener('click', () => RentaCorta.abrir(UI.inmuebleRenta, null));
     // Formularios
@@ -1819,18 +1875,24 @@ const UI = {
     $('m-row-coc').style.display = hayInm ? '' : 'none';
 
     // Rendimiento del mes: interés del mes completo (corte al día 1, todas las
-    // modalidades, neto de retención) + rentas netas. En el tap se separa lo que
-    // entra al banco de lo que se acumula dentro de los instrumentos.
+    // modalidades, neto de retención). Sin rentas: en el tap se separa lo que
+    // entra al banco de lo que se acumula dentro de los instrumentos, y las
+    // rentas aparecen aparte, rotuladas como referencia que no suma.
     $('flujo-total').textContent = Fmt.money(t.rendimientoMes, base) + ' /mes';
     $('flujo-desglose').innerHTML = `
-      <div class="kv"><span class="k"><b>Entra al banco</b> <span class="tiny">(rentas netas + certificados de pago mensual)</span></span><span class="v num">${Fmt.money(t.rendimientoMesCobro, base)}</span></div>
-      <div class="kv"><span class="k">— Rentas netas de inmuebles</span><span class="v num">${Fmt.money(t.inmFlujoAnual/12, base)}</span></div>
-      <div class="kv"><span class="k">— Intereses de pago mensual${cfg.aplicarRetencion?' (netos)':''}</span><span class="v num">${Fmt.money(t.rendimientoMesCobro - t.inmFlujoAnual/12, base)}</span></div>
-      ${(() => { const rc = Calc.rcNetoUltimoMes(); return rc.hay
-        ? `<div class="kv"><span class="k">&mdash; Renta corta <span class="tiny">(neto de ${RentaCorta.etiqueta(rc.periodo)})</span></span><span class="v num">${Fmt.money(rc.total, base)}</span></div>` : ''; })()}
+      <div class="kv"><span class="k"><b>Entra al banco</b> <span class="tiny">(certificados de pago mensual)</span></span><span class="v num">${Fmt.money(t.rendimientoMesCobro, base)}</span></div>
       <div class="kv"><span class="k"><b>Se acumula en el instrumento</b> <span class="tiny">(capitalizable y pago al vencimiento)</span></span><span class="v num">${Fmt.money(t.rendimientoMesAcum, base)}</span></div>
       <div class="kv"><span class="k">Interés devengado del 1 a hoy${cfg.aplicarRetencion?' (neto)':''}</span><span class="v num">${Fmt.money(t.interesMesDevNeto, base)}</span></div>
-      <div class="tiny" style="margin-top:6px">Interés del mes calendario completo, fijado desde el día 1, neto de la retención de cada instrumento. Rentas netas = NOI − servicio de deuda − ISR alquiler (${cfg.aplicarIsrAlquiler?Fmt.pct(cfg.isrAlquilerEfectivo):'no aplicado'}), prorrateado mensual. Lo acumulado es rendimiento tuyo, pero no entra al banco hasta capitalizar o vencer.</div>`;
+      <div class="tiny" style="margin-top:6px">Interés del mes calendario completo, fijado desde el día 1, neto de la retención de cada instrumento. Lo acumulado es rendimiento tuyo, pero no entra al banco hasta capitalizar o vencer.</div>
+      ${(() => {
+        const rentaLarga = t.inmFlujoAnual / 12;
+        const rc = Calc.rcNetoUltimoMes();
+        if (Math.abs(rentaLarga) < 0.005 && !rc.hay) return '';
+        return `<div class="tiny" style="margin-top:10px;font-weight:700">Referencia — no suma en esta cifra</div>
+        ${Math.abs(rentaLarga) >= 0.005 ? `<div class="kv"><span class="k">Rentas netas de inmuebles <span class="tiny">(renta larga, prorrateo mensual)</span></span><span class="v num">${Fmt.money(rentaLarga, base)}</span></div>` : ''}
+        ${rc.hay ? `<div class="kv"><span class="k">Renta corta <span class="tiny">(neto de ${RentaCorta.etiqueta(rc.periodo)})</span></span><span class="v num">${Fmt.money(rc.total, base)}</span></div>` : ''}
+        <div class="tiny" style="margin-top:6px">Las rentas quedan fuera del total de esta tarjeta a peticion tuya: aqui solo va rendimiento financiero. El flujo inmobiliario completo esta en la tarjeta de Portafolio, en el flujo de caja anual y en el tab Renta.</div>`;
+      })()}`;
 
     // Rendimiento financiero
     $('rend-mes').textContent = Fmt.money(t.interesMesDev, base);
@@ -1916,6 +1978,8 @@ const UI = {
             ? '<div class="tiny" style="margin-top:4px">Cuadra con el deposito recibido.</div>'
             : `<div class="alert">El deposito recibido difiere del calculado en ${Fmt.money(dif, mon)}. Revisa la relacion del gestor: puede haber un descuento no reportado.</div>`}
         <div class="kv"><span class="k">&minus; Servicios fijos</span><span class="v num">${Fmt.money(d.servicios, mon)}</span></div>
+        ${(d.serviciosConvertidos > 0 || d.comprasConvertidas > 0)
+          ? `<div class="tiny" style="margin-top:4px">De esas cifras, ${Fmt.money(d.serviciosConvertidos + d.comprasConvertidas, mon)} corresponden a gastos que capturaste en otra moneda (Edesur, Claro, mantenimiento) y se convirtieron a ${Fmt.num(Calc.cfg().tasaCambio)} DOP/USD, la tasa de Ajustes del ${Fmt.fecha(Calc.cfg().tasaCambioFecha)}.</div>` : ''}
         <div class="kv"><span class="k"><b>= Ingreso neto</b></span><span class="v num" style="font-size:18px;color:var(--verde)">${Fmt.money(d.neto, mon)}</span></div>
         <div class="kv"><span class="k">Margen neto del mes <span class="tt tiny" title="Ingreso neto / ingreso bruto. Mide eficiencia operativa, no retorno sobre la inversion.">&#9432;</span></span><span class="v num">${d.margen !== null ? Fmt.pct(d.margen, 1) : '—'}</span></div>
         <div class="kv"><span class="k">ADR &middot; RevPAR <span class="tt tiny" title="ADR: tarifa promedio por noche vendida. RevPAR: ingreso por noche disponible; combina precio y ocupacion y normaliza meses de distinta duracion.">&#9432;</span></span><span class="v num">${d.adr !== null ? Fmt.money(d.adr, mon, 0) : '—'} &middot; ${d.revpar !== null ? Fmt.money(d.revpar, mon, 0) : '—'}</span></div>
@@ -1957,6 +2021,15 @@ const UI = {
     const serie = Calc.rcSerie(im, n);
     const mon = im.moneda;
     const esOcup = UI.metricaRenta === 'ocupacion';
+    const serie2 = UI.serieRenta;   // neto / bruto / ambos
+    $('renta-serie-titulo').textContent = serie2 === 'bruto' ? 'Ingreso bruto mensual'
+      : serie2 === 'ambos' ? 'Ingreso mensual: bruto y neto'
+      : 'Ingreso neto mensual';
+    $('renta-serie-nota').innerHTML = serie2 === 'bruto'
+      ? 'Lo que facturo el apartamento antes de limpieza, comision, compras y servicios. Solo meses cerrados; el eje horizontal es el mismo del grafico de abajo.'
+      : serie2 === 'ambos'
+        ? 'La distancia entre las dos lineas es el costo total de operar el apartamento en ese mes. Cuando se abren, el bruto crecio sin que el neto lo siguiera.'
+        : 'Lo que queda despues de limpieza, comision, compras y servicios. Solo meses cerrados; el eje horizontal es el mismo del grafico de abajo.';
     $('renta-ocup-titulo').textContent = esOcup ? 'Ocupacion' : 'RevPAR';
     $('renta-ocup-nota').innerHTML = esOcup
       ? 'Noches ocupadas sobre noches disponibles. Las noches que bloqueas para uso propio se descuentan del denominador: tu propio uso no es una vacancia comercial.'
@@ -1975,16 +2048,27 @@ const UI = {
     const labels = serie.map(c => RentaCorta.etiquetaCorta(c.periodo));
     const datos = serie.map(c => Calc.rcCierre(im, c));
 
+    // El bruto va en verde claro y el neto en verde bosque: en "Ambos" el area
+    // entre las dos lineas es, literalmente, el costo de operar el mes.
+    const dsNeto = { label: 'Ingreso neto', data: datos.map(d => d.neto),
+      borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.06)', fill: true,
+      tension: .25, pointRadius: 3, borderWidth: 2 };
+    const dsBruto = { label: 'Ingreso bruto', data: datos.map(d => d.bruto),
+      borderColor: '#1ec677', backgroundColor: 'rgba(30,198,119,.08)', fill: serie2 !== 'ambos',
+      tension: .25, pointRadius: 3, borderWidth: 2 };
+    const dsets = serie2 === 'bruto' ? [dsBruto]
+                : serie2 === 'ambos' ? [dsBruto, dsNeto]
+                : [dsNeto];
+
     UI.chart('chart-renta-neto', {
       type: 'line',
-      data: { labels, datasets: [{ label: 'Ingreso neto', data: datos.map(d => d.neto),
-        borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.06)', fill: true,
-        tension: .25, pointRadius: 3, borderWidth: 2 }] },
+      data: { labels, datasets: dsets },
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { display: false },
-          tooltip: { callbacks: { label: c => Fmt.money(c.parsed.y, mon) } } },
+        plugins: { legend: { display: serie2 === 'ambos', position: 'bottom',
+            labels: { boxWidth: 10, font: { size: 10 } } },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Fmt.money(c.parsed.y, mon)}` } } },
         scales: {
           x: { ticks: { maxTicksLimit: 7, font: { size: 10 } }, grid: { display: false } },
           y: { ticks: { font: { size: 10 }, callback: v => Fmt.num(v/1000, 0) + 'k' }, grid: { color: 'rgba(13,64,41,.05)' } }
@@ -2636,18 +2720,38 @@ const Forms = {
     $('i-bloque-corta').style.display = (rentado && corta) ? 'block' : 'none';
   },
 
-  /* Plantilla de servicios fijos: una linea por concepto, "Concepto, monto". */
-  leerServicios(txt){
+  /* Plantilla de servicios fijos: una linea por concepto, con el formato
+     "Concepto, monto, MONEDA". La moneda es opcional al escribir; si falta se
+     asume la del inmueble, que es el comportamiento que existia antes de que
+     la moneda por linea existiera. */
+  leerServicios(txt, monedaDefecto){
+    const def = monedaDefecto || 'DOP';
+    const esNumero = s => /^-?[0-9][0-9,]*(\.[0-9]+)?$/.test(s.trim());
     return (txt || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-      const i = l.lastIndexOf(',');
-      const concepto = (i >= 0 ? l.slice(0, i) : l).trim();
-      const monto = i >= 0 ? Fmt.parse(l.slice(i + 1)) : 0;
-      return { concepto, monto: isNaN(monto) ? 0 : monto };
+      let resto = l, moneda = null;
+      const m = /,\s*(DOP|USD|RD\$|US\$)\s*$/i.exec(l);
+      if (m) { moneda = /usd|us\$/i.test(m[1]) ? 'USD' : 'DOP'; resto = l.slice(0, m.index); }
+      // El monto es el sufijo numerico: se busca la PRIMERA coma cuyo resto sea
+      // un numero completo. Partir por la ULTIMA coma rompia dentro del
+      // separador de miles: "Cuota mantenimiento, 3,500" guardaba 500 en
+      // silencio, que es exactamente el error que este parser existe para evitar.
+      let concepto = resto.trim(), monto = 0;
+      for (let i = 0; i < resto.length; i++) {
+        if (resto[i] !== ',') continue;
+        const cola = resto.slice(i + 1);
+        if (!esNumero(cola)) continue;
+        concepto = resto.slice(0, i).trim();
+        const v = Fmt.parse(cola);
+        monto = isNaN(v) ? 0 : v;
+        break;
+      }
+      return { concepto: concepto.replace(/,\s*$/, '').trim(), monto, moneda: moneda || def };
     }).filter(x => x.concepto);
   },
 
-  escribirServicios(arr){
-    return (arr || []).map(x => `${x.concepto}, ${x.monto || 0}`).join('\n');
+  escribirServicios(arr, monedaDefecto){
+    const def = monedaDefecto || 'DOP';
+    return (arr || []).map(x => `${x.concepto}, ${x.monto || 0}, ${x.moneda || def}`).join('\n');
   },
 
   previewCert(){
@@ -2817,7 +2921,7 @@ const Forms = {
       const pct = Forms.num('i-rc-comision');
       im.rentaCorta = {
         comisionPorcentaje: (pct === null ? 20 : pct) / 100,
-        serviciosPlantilla: Forms.leerServicios($('i-rc-servicios').value),
+        serviciosPlantilla: Forms.leerServicios($('i-rc-servicios').value, $('i-moneda').value),
         cierres: []   // los cierres existentes se conservan al guardar, ver guardarInmueble
       };
     }
@@ -2923,7 +3027,7 @@ const Forms = {
     $('i-modalidad-renta').value = im.modalidadRenta || 'larga';
     const rcCfg = im.rentaCorta || {};
     $('i-rc-comision').value = ((rcCfg.comisionPorcentaje != null ? rcCfg.comisionPorcentaje : 0.20) * 100).toFixed(2);
-    $('i-rc-servicios').value = Forms.escribirServicios(rcCfg.serviciosPlantilla);
+    $('i-rc-servicios').value = Forms.escribirServicios(rcCfg.serviciosPlantilla, im.moneda);
     Forms.mostrarBloquesInm();
     const r = im.renta || {};
     Miles.set('i-renta', r.montoMensual || ''); $('i-dia-cobro').value = r.diaCobro || '';
@@ -2976,12 +3080,23 @@ const RentaCorta = {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   },
 
-  lineas(arr, prefijo){
-    return (arr || []).map((x, i) => `
-      <div class="fila2" style="margin-bottom:6px">
+  /* La moneda viaja por linea, no por inmueble: el apartamento puede medirse en
+     US$ y aun asi Edesur, Claro y el mantenimiento se pagan en RD$. La app
+     convierte con la tasa de Ajustes y lo declara en la ficha. */
+  lineas(arr, prefijo, monedaInmueble){
+    const mon = monedaInmueble || 'DOP';
+    return (arr || []).map((x, i) => {
+      const m = x.moneda || mon;
+      return `
+      <div class="fila3m" style="margin-bottom:6px">
         <div><input id="${prefijo}-c-${i}" value="${(x.concepto || '').replace(/"/g, '&quot;')}" placeholder="Concepto"></div>
         <div><input id="${prefijo}-m-${i}" inputmode="decimal" data-miles value="${x.monto ? Fmt.agrupar(String(x.monto)) : ''}" placeholder="0"></div>
-      </div>`).join('');
+        <div><select id="${prefijo}-x-${i}">
+          <option value="DOP"${m === 'DOP' ? ' selected' : ''}>RD$</option>
+          <option value="USD"${m === 'USD' ? ' selected' : ''}>US$</option>
+        </select></div>
+      </div>`;
+    }).join('');
   },
 
   abrir(imId, cierreId){
@@ -2991,10 +3106,12 @@ const RentaCorta = {
     const rc = im.rentaCorta || {};
     const existente = cierreId ? (rc.cierres || []).find(c => c.id === cierreId) : null;
     const periodo = existente ? existente.periodo : RentaCorta.periodoAnterior();
+    const monInm = im.moneda || 'DOP';
     const servicios = existente ? (existente.servicios || [])
-                                : (rc.serviciosPlantilla || []).map(x => ({ concepto: x.concepto, monto: x.monto || 0 }));
+                                : (rc.serviciosPlantilla || []).map(x => ({ concepto: x.concepto, monto: x.monto || 0, moneda: x.moneda || monInm }));
     const compras = existente ? (existente.compras || []) : [];
-    RentaCorta.buffer = { imId, cierreId: cierreId || null, servicios: servicios.slice(), compras: compras.slice() };
+    RentaCorta.buffer = { imId, cierreId: cierreId || null, moneda: monInm,
+                          servicios: servicios.slice(), compras: compras.slice() };
     const v = k => existente && existente[k] != null ? existente[k] : '';
 
     UI.abrirSheet(existente ? 'Editar ' + RentaCorta.etiqueta(periodo) : 'Registrar mes', `
@@ -3022,7 +3139,7 @@ const RentaCorta = {
 
       <fieldset>
         <div class="legend">Compras y refacciones</div>
-        <div id="rc-compras">${RentaCorta.lineas(compras, 'rc-comp')}</div>
+        <div id="rc-compras">${RentaCorta.lineas(compras, 'rc-comp', monInm)}</div>
         <button class="btn sec mini" onclick="RentaCorta.agregar('compras')">Agregar linea</button>
       </fieldset>
 
@@ -3034,8 +3151,9 @@ const RentaCorta = {
 
       <fieldset>
         <div class="legend">Servicios fijos que pagas tu</div>
-        <div id="rc-servicios">${RentaCorta.lineas(servicios, 'rc-serv')}</div>
+        <div id="rc-servicios">${RentaCorta.lineas(servicios, 'rc-serv', monInm)}</div>
         <button class="btn sec mini" onclick="RentaCorta.agregar('servicios')">Agregar linea</button>
+        <div class="tiny" style="margin-top:6px">Cada linea lleva su moneda. Edesur, Claro y el mantenimiento se capturan en RD$ tal como los pagas; la app los convierte a ${monInm === 'USD' ? 'US$' : 'RD$'} a ${Fmt.num(Calc.cfg().tasaCambio)} DOP/USD (${Fmt.fecha(Calc.cfg().tasaCambioFecha)}) para la cascada del mes.</div>
       </fieldset>
 
       <label>Notas</label><textarea id="rc-notas" rows="2">${existente ? (existente.notas || '') : ''}</textarea>
@@ -3058,11 +3176,13 @@ const RentaCorta = {
     const b = RentaCorta.buffer;
     b.compras = b.compras.map((x, i) => ({
       concepto: ($('rc-comp-c-' + i) || {}).value || x.concepto,
-      monto: RentaCorta.n('rc-comp-m-' + i) || 0
+      monto: RentaCorta.n('rc-comp-m-' + i) || 0,
+      moneda: ($('rc-comp-x-' + i) || {}).value || x.moneda || b.moneda
     }));
     b.servicios = b.servicios.map((x, i) => ({
       concepto: ($('rc-serv-c-' + i) || {}).value || x.concepto,
-      monto: RentaCorta.n('rc-serv-m-' + i) || 0
+      monto: RentaCorta.n('rc-serv-m-' + i) || 0,
+      moneda: ($('rc-serv-x-' + i) || {}).value || x.moneda || b.moneda
     }));
   },
 
@@ -3071,9 +3191,9 @@ const RentaCorta = {
   agregar(cual){
     RentaCorta.capturarLineas();
     const b = RentaCorta.buffer;
-    b[cual].push({ concepto: '', monto: 0 });
+    b[cual].push({ concepto: '', monto: 0, moneda: b.moneda });
     const cont = $(cual === 'compras' ? 'rc-compras' : 'rc-servicios');
-    cont.innerHTML = RentaCorta.lineas(b[cual], cual === 'compras' ? 'rc-comp' : 'rc-serv');
+    cont.innerHTML = RentaCorta.lineas(b[cual], cual === 'compras' ? 'rc-comp' : 'rc-serv', b.moneda);
     Miles.activar(cont);
   },
 
@@ -3226,7 +3346,7 @@ const Informe = {
       <div class="pdf-hero">
         <div><div class="lbl">Total DOP (nativo)</div><div class="val num">${Fmt.money(t.finDOP + Store.data.inmuebles.filter(i=>i.moneda==='DOP').reduce((s,i)=>s+Calc.inmueble(i).equity,0), 'DOP')}</div></div>
         <div><div class="lbl">Total USD (nativo)</div><div class="val num">${Fmt.money(t.finUSD + Store.data.inmuebles.filter(i=>i.moneda==='USD').reduce((s,i)=>s+Calc.inmueble(i).equity,0), 'USD')}</div></div>
-        <div><div class="lbl">Rendimiento del mes</div><div class="val num">${Fmt.money(t.rendimientoMes, base)}</div><div style="font-size:9px;color:#6b7f74">Entra al banco ${Fmt.money(t.rendimientoMesCobro, base)} + se acumula ${Fmt.money(t.rendimientoMesAcum, base)}</div></div>
+        <div><div class="lbl">Rendimiento del mes (financiero)</div><div class="val num">${Fmt.money(t.rendimientoMes, base)}</div><div style="font-size:9px;color:#6b7f74">Entra al banco ${Fmt.money(t.rendimientoMesCobro, base)} + se acumula ${Fmt.money(t.rendimientoMesAcum, base)}</div></div>
       </div>
       <div class="pdf-hero">
         <div><div class="lbl">Rendimiento fin. bruto</div><div class="val num">${Fmt.money(t.rendBruto, base)}</div></div>
