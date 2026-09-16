@@ -318,6 +318,17 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .barras .col.sel .bar{outline:2px solid var(--bosque);outline-offset:1px}
 .linea-ing{position:absolute;left:0;right:0;border-top:1px dashed var(--verde);pointer-events:none}
 .linea-ing span{position:absolute;right:0;top:-13px;font-size:9px;color:var(--verde);font-weight:700}
+/* Promedio del gasto: misma intermitencia, color distinto y etiqueta a la
+   izquierda para que nunca pise a la del ingreso. */
+.linea-prom{position:absolute;left:0;right:0;border-top:1px dashed var(--bosque);opacity:.5;pointer-events:none}
+.linea-prom span{position:absolute;left:0;top:-13px;font-size:9px;color:var(--bosque);font-weight:700;opacity:.85}
+/* Editor de categorias */
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.swatches button{width:36px;height:36px;border-radius:10px;border:2px solid transparent}
+.swatches button.on{border-color:var(--bosque)}
+input[type=color]{width:100%;height:46px;padding:4px;border-radius:12px;background:var(--blanco)}
+.hdr-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.hdr-row h3{margin:0}
 .meses-lbl{display:flex;gap:4px;margin-top:5px}
 .meses-lbl span{flex:1;text-align:center;font-size:9px;color:var(--gris);min-width:0}
 .meses-lbl span.sel{color:var(--bosque);font-weight:700}
@@ -809,10 +820,10 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 <nav class="tabbar">
   <button data-v="resumen" class="active"><span class="ic">&#8962;</span>Resumen</button>
   <button data-v="portafolio"><span class="ic">&#9776;</span>Portafolio</button>
-  <!-- Sin icono: solo la palabra. El espaciador de 18px mantiene la etiqueta a
-       la misma altura que la de los demas tabs. -->
-  <button data-v="renta" id="tab-renta"><span class="ic" aria-hidden="true" style="height:18px"></span>Renta</button>
-  <button data-v="presupuesto" id="tab-presupuesto"><span class="ic" aria-hidden="true" style="height:18px"></span>Presupuesto</button>
+  <!-- Iconos geometricos monocromos, de la misma familia que los dos de
+       arriba: nada de emoji, que en iOS entra a color y rompe la barra. -->
+  <button data-v="renta" id="tab-renta"><span class="ic">&#9635;</span>Renta</button>
+  <button data-v="presupuesto" id="tab-presupuesto"><span class="ic">&#8721;</span>Presupuesto</button>
 </nav>
 
 <!-- Hoja: ficha de detalle -->
@@ -1962,16 +1973,33 @@ const Calc = {
     }).filter(c => c.anual > 0);
   },
 
-  /* Cobertura patrimonial: qué porción del gasto mensual equivalente ya la
-     pagan las rentas netas y los intereses de pago mensual. El denominador es
-     el equivalente y no el promedio de mensualidades — usar el segundo infla
-     la cobertura exactamente en la proporción de lo que se omite. */
+  /* Cobertura patrimonial.
+     Numerador = rentas netas de inmuebles (renta larga, prorrateo mensual)
+                 + rendimiento financiero del mes, neto de retención.
+     Supuesto declarado, y no es menor: el rendimiento del mes es DEVENGO, no
+     caja. Incluye el interés de los capitalizables y de los de pago al
+     vencimiento, que es rendimiento tuyo pero no entra al banco este mes. Por
+     eso la tarjeta separa las dos piezas y rotula cuál de las dos es caja.
+     Denominador = gasto mensual equivalente, con lo semestral y lo anual
+     adentro. Usar el promedio de mensualidades inflaría la cobertura
+     exactamente en la proporción de lo que se deja fuera.
+     La renta corta se reporta aparte y no suma, igual que en el Resumen: se
+     mide por cierres reales, no por prorrateo de un contrato. */
   presCobertura(){
     const a = this.presAnio();
-    const pasivo = this.totales('Todos').flujoMensual;
+    const t = this.totales('Todos');
+    const rentas = (t.inmFlujoAnual || 0) / 12;
+    const intereses = t.rendimientoMes || 0;
+    const pasivo = rentas + intereses;
+    const rc = this.rcNetoUltimoMes();
     return {
-      pasivo, gasto: a.gastoEquivalente,
-      ratio: a.gastoEquivalente > 0 ? pasivo / a.gastoEquivalente : null
+      pasivo, rentas, intereses,
+      caja: rentas + (t.rendimientoMesCobro || 0),
+      devengado: t.rendimientoMesAcum || 0,
+      rentaCorta: rc,
+      gasto: a.gastoEquivalente,
+      ratio: a.gastoEquivalente > 0 ? pasivo / a.gastoEquivalente : null,
+      ratioCaja: a.gastoEquivalente > 0 ? (rentas + (t.rendimientoMesCobro || 0)) / a.gastoEquivalente : null
     };
   },
 
@@ -2210,15 +2238,16 @@ const UI = {
         Mientras tanto estas cifras están incompletas.</div>` : ''}
 
       <div class="card hero-card">
-        <h3>Excedente mensual equivalente</h3>
-        <div class="hero" style="${neg ? 'color:var(--rojo)' : ''}">
-          <span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(saldo)}
+        <h3>Gasto mensual equivalente</h3>
+        <div class="hero">
+          <span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(a.gastoEquivalente)}
         </div>
-        <div class="hero-note">Ingreso menos gasto, con lo semestral y lo anual ya prorrateado.
+        <div class="hero-note">Total del año entre doce, con lo semestral y lo anual ya prorrateado.
           Es flujo de caja del hogar: no entra en el patrimonio.</div>
         <div class="pres-kpis">
           <div><div class="l">Ingreso</div><div class="v">${Fmt.money(a.ingresoEquivalente, base, 0)}</div></div>
-          <div><div class="l">Gasto equivalente</div><div class="v">${Fmt.money(a.gastoEquivalente, base, 0)}</div></div>
+          <div><div class="l">Excedente mensual equivalente</div>
+            <div class="v" style="${neg ? 'color:var(--rojo)' : ''}">${Fmt.money(saldo, base, 0)}</div></div>
           <div><div class="l">Tasa de ahorro</div><div class="v">${Fmt.pct(a.tasaAhorro, 1)}</div></div>
         </div>
       </div>
@@ -2236,20 +2265,30 @@ const UI = {
       </div>
 
       <div class="card">
-        <h3>Categorías <span class="tiny" style="text-transform:none;letter-spacing:0">· equivalente mensual</span></h3>
+        <div class="hdr-row">
+          <h3>Categorías <span class="tiny" style="text-transform:none;letter-spacing:0">· equivalente mensual</span></h3>
+          <button class="btn sec mini solo-editor" onclick="Presup.abrirCategorias()">Administrar</button>
+        </div>
         ${filas}
       </div>
 
       ${cob.gasto > 0 ? `
       <div class="card">
         <h3>Cobertura patrimonial</h3>
-        <div class="kv"><span class="k">Ingreso pasivo mensual</span><span class="v">${Fmt.money(cob.pasivo, base)}</span></div>
+        <div class="kv"><span class="k">Rentas netas de inmuebles <span class="tiny">(renta larga, prorrateo mensual)</span></span><span class="v">${Fmt.money(cob.rentas, base)}</span></div>
+        <div class="kv"><span class="k">Rendimiento financiero del mes <span class="tiny">(neto de retención)</span></span><span class="v">${Fmt.money(cob.intereses, base)}</span></div>
+        <div class="kv"><span class="k"><b>Ingreso pasivo mensual</b></span><span class="v">${Fmt.money(cob.pasivo, base)}</span></div>
         <div class="kv"><span class="k">Gasto mensual equivalente</span><span class="v">${Fmt.money(cob.gasto, base)}</span></div>
-        <div class="kv"><span class="k">Cobertura</span><span class="v" style="color:var(--verde)">${Fmt.pct(cob.ratio, 1)}</span></div>
+        <div class="kv"><span class="k"><b>Cobertura</b></span><span class="v" style="color:var(--verde)">${Fmt.pct(cob.ratio, 1)}</span></div>
+        ${cob.devengado >= 0.005 ? `
+        <div class="kv"><span class="k">De la cobertura, lo que entra al banco <span class="tiny">(rentas + certificados de pago mensual)</span></span><span class="v">${Fmt.pct(cob.ratioCaja, 1)}</span></div>` : ''}
+        ${cob.rentaCorta && cob.rentaCorta.hay ? `
+        <div class="kv"><span class="k">Renta corta <span class="tiny">(neto de ${RentaCorta.etiqueta(cob.rentaCorta.periodo)}) — no suma aquí</span></span><span class="v">${Fmt.money(cob.rentaCorta.total, base)}</span></div>` : ''}
         <div class="tiny" style="margin-top:8px;line-height:1.5">
-          Qué porción de los compromisos del hogar ya la pagan las rentas netas y los intereses
-          de pago mensual. El denominador es el equivalente: usar el promedio de mensualidades
-          inflaría la cobertura justo en lo que se omite.
+          Qué porción de los compromisos del hogar ya la paga el patrimonio.
+          El rendimiento del mes es devengo: incluye el interés de los capitalizables
+          y de los de pago al vencimiento, que es tuyo pero no entra al banco este mes.
+          El denominador es el equivalente, con lo semestral y lo anual adentro.
         </div>
       </div>` : ''}
 
@@ -2310,6 +2349,9 @@ const UI = {
     const H = 94;
     const max = Math.max.apply(null, a.meses.map(m => m.gasto).concat([a.ingresoEquivalente, 1]));
     const yIng = Math.min(H, Math.round(a.ingresoEquivalente / max * H));
+    // Promedio = gasto mensual equivalente (total del año entre doce). Es la
+    // misma cifra que encabeza la vista Mes: así las dos pantallas no discuten.
+    const yProm = Math.min(H, Math.round(a.gastoEquivalente / max * H));
 
     const barras = a.meses.map(m => {
       const h = Math.max(2, Math.round(m.gasto / max * H));
@@ -2351,11 +2393,13 @@ const UI = {
         <h3>Gasto mes a mes</h3>
         <div class="barras">
           <div class="linea-ing" style="bottom:${yIng}px"><span>ingreso ${Fmt.money(a.ingresoEquivalente, base, 0)}</span></div>
+          <div class="linea-prom" style="bottom:${yProm}px"><span>promedio ${Fmt.money(a.gastoEquivalente, base, 0)}</span></div>
           ${barras}
         </div>
         <div class="meses-lbl">${etiquetas}</div>
-        <div class="tiny" style="margin-top:10px">Toca un mes para ver de qué está compuesto.
-          En ámbar, los meses donde el gasto supera al ingreso.</div>
+        <div class="tiny" style="margin-top:10px;line-height:1.5">Toca un mes para ver de qué está compuesto.
+          En ámbar, los meses donde el gasto supera al ingreso. La línea verde es el ingreso;
+          la oscura, el promedio de gasto mensual.</div>
       </div>
 
       <div class="card">
@@ -3862,7 +3906,8 @@ const Presup = {
         <input id="pg-nombre" value="${it ? Presup.esc(it.nombre) : ''}" placeholder="${esGasto ? 'Colegio Loyola' : 'Salario'}">
         ${esGasto ? `
         <label>Categoría</label>
-        <select id="pg-cat">${cats.map(c => `<option value="${c.id}"${sel(it ? it.categoria : 'otros', c.id)}>${c.nombre}</option>`).join('')}</select>` : `
+        <select id="pg-cat">${cats.map(c => `<option value="${c.id}"${sel(it ? it.categoria : 'otros', c.id)}>${c.nombre}</option>`).join('')}</select>
+        <div class="tiny" style="margin-top:4px">¿Falta una? <button style="color:var(--verde);font-weight:700;font-size:11px" onclick="Presup.abrirCategorias()">Administrar categorías</button></div>` : `
         <label>Tipo de ingreso</label>
         <select id="pg-tipo">
           <option value="fijo"${sel(it ? it.tipo : 'fijo', 'fijo')}>Fijo</option>
@@ -4015,6 +4060,131 @@ const Presup = {
     Store.save();
     UI.cerrarSheet();
     UI.renderPresupuesto();
+  },
+
+  /* ---------- Categorías ----------
+     El color vive en la categoría y viaja con ella al anillo, a la lista y al
+     informe. El orden de la lista es el orden de las porciones: por eso los
+     colores base alternan claro y oscuro, para que dos vecinas nunca
+     compartan luminosidad. Una categoría nueva se agrega al final. */
+  catEdit: null,
+  catColor: '#0f7d8c',
+
+  COLORES: ['#1ec677','#0d4029','#5ed6d0','#0f7d8c','#b8dd6b','#1d5fa8','#9fd3bb','#5d9e1f',
+            '#6b7f74','#3a6e54','#7fb8d9','#c6f0da','#2f8f6b','#8fd9b4'],
+
+  abrirCategorias(){
+    if (Modo.consulta()) return;
+    const base = Store.data.config.monedaBase;
+    const cats = Calc.presCategorias();
+    const p = Store.data.presupuesto;
+    const cuenta = id => (p.gastos || []).filter(g => g.categoria === id).length;
+    UI.abrirSheet('Categorías', `
+      <div class="card">
+        <div class="tiny" style="line-height:1.5">El color queda atado a la categoría y es el mismo
+          en el anillo, en la lista y en el informe. El orden de esta lista es también el orden de
+          las porciones del anillo.</div>
+      </div>
+      <div class="card">
+        ${cats.map(c => `
+          <button class="cat-row" onclick="Presup.editarCategoria('${c.id}')">
+            <span class="dot" style="background:${c.color}"></span>
+            <span class="nm">${Presup.esc(c.nombre)}</span>
+            <span class="mt"><span class="p">${cuenta(c.id)} partida${cuenta(c.id) === 1 ? '' : 's'}</span></span>
+          </button>`).join('')}
+      </div>
+      <div class="btn-row"><button class="btn" onclick="Presup.editarCategoria(null)">Agregar categoría</button></div>
+      <div class="btn-row"><button class="btn sec" onclick="UI.cerrarSheet(); UI.renderPresupuesto();">Listo</button></div>`);
+  },
+
+  editarCategoria(id){
+    if (Modo.consulta()) return;
+    const c = id ? Calc.presCategorias().find(x => x.id === id) : null;
+    const usos = id ? (Store.data.presupuesto.gastos || []).filter(g => g.categoria === id).length : 0;
+    Presup.catEdit = id || null;
+    Presup.catColor = c ? c.color : Presup.colorLibre();
+    UI.abrirSheet(id ? 'Editar categoría' : 'Nueva categoría', `
+      <fieldset>
+        <label>Nombre</label>
+        <input id="pc-nombre" value="${c ? Presup.esc(c.nombre) : ''}" placeholder="Vivienda">
+        <label style="margin-top:10px">Color</label>
+        <input type="color" id="pc-color" value="${Presup.catColor}" oninput="Presup.catColor=this.value;Presup.pintarSwatches()">
+        <div class="swatches" id="pc-swatches"></div>
+        <div class="err" id="pc-err"></div>
+        <div class="btn-row"><button class="btn" onclick="Presup.guardarCategoria()">Guardar</button></div>
+        ${id && id !== 'otros' ? `<div class="btn-row"><button class="btn peligro" onclick="Presup.borrarCategoria('${id}')">Eliminar${usos ? ' (' + usos + ' partida' + (usos === 1 ? '' : 's') + ')' : ''}</button></div>` : ''}
+        ${id === 'otros' ? '<div class="tiny" style="margin-top:10px">«Otros» no se elimina: es el destino de las partidas cuando borras otra categoría.</div>' : ''}
+        <div class="btn-row"><button class="btn sec" onclick="Presup.abrirCategorias()">Volver</button></div>
+      </fieldset>`);
+    Presup.pintarSwatches();
+  },
+
+  /* Primer color de la lista que no esté en uso, para no repetir de entrada. */
+  colorLibre(){
+    const usados = Calc.presCategorias().map(c => (c.color || '').toLowerCase());
+    return Presup.COLORES.find(x => usados.indexOf(x) === -1) || '#0f7d8c';
+  },
+
+  pintarSwatches(){
+    const box = $('pc-swatches');
+    if (!box) return;
+    box.innerHTML = Presup.COLORES.map(x =>
+      `<button style="background:${x}" class="${x.toLowerCase() === (Presup.catColor || '').toLowerCase() ? 'on' : ''}"
+        aria-label="Color ${x}" onclick="Presup.elegirColor('${x}')"></button>`).join('');
+    const inp = $('pc-color');
+    if (inp && inp.value.toLowerCase() !== (Presup.catColor || '').toLowerCase()) inp.value = Presup.catColor;
+  },
+
+  elegirColor(x){
+    Presup.catColor = x;
+    Presup.pintarSwatches();
+  },
+
+  slug(t){
+    const b = String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'categoria';
+    const usados = Calc.presCategorias().map(c => c.id);
+    if (usados.indexOf(b) === -1) return b;
+    let n = 2;
+    while (usados.indexOf(b + '-' + n) !== -1) n++;
+    return b + '-' + n;
+  },
+
+  guardarCategoria(){
+    const err = $('pc-err');
+    const nombre = ($('pc-nombre').value || '').trim();
+    err.classList.remove('show');
+    if (!nombre) { err.textContent = 'Ponle un nombre a la categoría.'; err.classList.add('show'); return; }
+    const cats = Store.data.presupuesto.config.categorias;
+    if (Presup.catEdit) {
+      const c = cats.find(x => x.id === Presup.catEdit);
+      if (c) { c.nombre = nombre; c.color = Presup.catColor; }
+    } else {
+      cats.push({ id: Presup.slug(nombre), nombre, color: Presup.catColor });
+    }
+    Store.save();
+    UI.renderPresupuesto();
+    Presup.abrirCategorias();
+  },
+
+  /* Eliminar nunca pierde partidas: las que estaban dentro pasan a «Otros». */
+  borrarCategoria(id){
+    if (id === 'otros') return;
+    const p = Store.data.presupuesto;
+    const usos = (p.gastos || []).filter(g => g.categoria === id).length;
+    const msg = usos
+      ? `Esta categoría tiene ${usos} partida${usos === 1 ? '' : 's'}. Se moverá${usos === 1 ? '' : 'n'} a «Otros» y la categoría se eliminará. ¿Continuar?`
+      : '¿Eliminar esta categoría?';
+    if (!confirm(msg)) return;
+    if (!p.config.categorias.some(c => c.id === 'otros')) {
+      p.config.categorias.push({ id: 'otros', nombre: 'Otros', color: '#6b7f74' });
+    }
+    (p.gastos || []).forEach(g => { if (g.categoria === id) g.categoria = 'otros'; });
+    p.config.categorias = p.config.categorias.filter(c => c.id !== id);
+    if (UI.presCatSel === id) UI.presCatSel = null;
+    Store.save();
+    UI.renderPresupuesto();
+    Presup.abrirCategorias();
   },
 
   /* ---------- Hoja de categoría ---------- */
