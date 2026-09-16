@@ -277,6 +277,60 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .err.show{display:block}
 .tt{border-bottom:1px dashed var(--gris);cursor:help}
 
+/* ============ Presupuesto familiar ============ */
+/* Flujo del hogar. Vive en su propio tab y nunca toca la cifra de patrimonio. */
+.hdr-acc{display:flex;align-items:center;gap:0;flex-shrink:0}
+.pres-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.pres-kpis > div{background:var(--menta);border-radius:12px;padding:9px 10px;min-width:0}
+.pres-kpis .l{font-size:10px;color:var(--gris);font-weight:700;line-height:1.25}
+.pres-kpis .v{font-size:14px;font-weight:700;color:var(--bosque);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.dona-wrap{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.dona-wrap .chart-box{flex:0 0 148px;height:148px;margin:0}
+.leyenda{flex:1 1 160px;min-width:150px;font-size:12px}
+.leyenda button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:2px 0;color:var(--bosque);min-height:26px;font-size:12px;transition:opacity .2s}
+.leyenda button .pc{margin-left:auto;color:var(--gris);font-weight:700;font-variant-numeric:tabular-nums}
+.leyenda.filtrada button{opacity:.3}
+.leyenda.filtrada button.on{opacity:1}
+.dot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+/* Filas de categoria y de partida */
+.cat-row{display:flex;align-items:center;gap:9px;padding:10px 0;width:100%;text-align:left}
+.cat-row + .cat-row{border-top:1px solid rgba(13,64,41,.06)}
+.cat-row.sel{background:rgba(30,198,119,.07);border-radius:10px;padding-left:8px;padding-right:8px}
+.cat-row .nm{font-size:14px;font-weight:700;min-width:0;overflow-wrap:anywhere}
+.cat-row .mt{margin-left:auto;text-align:right;white-space:nowrap;flex-shrink:0}
+.cat-row .mt .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.cat-row .mt .p{font-size:11px;color:var(--gris);font-variant-numeric:tabular-nums}
+.part-row{display:flex;align-items:center;gap:9px;padding:10px 0;width:100%;text-align:left}
+.part-row + .part-row{border-top:1px solid rgba(13,64,41,.06)}
+.part-row .info{min-width:0;flex:1}
+.part-row .nm2{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.part-row .sb{font-size:11px;color:var(--gris);margin-top:2px;overflow-wrap:anywhere}
+.part-row .mto{text-align:right;white-space:nowrap;font-weight:700;font-size:14px;
+  flex-shrink:0;font-variant-numeric:tabular-nums}
+/* Barras del ano. La altura sale del gasto; la linea punteada es el ingreso. */
+.barras{display:flex;align-items:flex-end;gap:4px;height:94px;margin-top:10px;position:relative}
+.barras .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
+  height:100%;min-width:0;padding:0;background:none}
+.barras .bar{width:100%;background:var(--verde);border-radius:3px 3px 0 0;min-height:2px;display:block}
+.barras .bar.def{background:var(--ambar)}
+.barras .col.sel .bar{outline:2px solid var(--bosque);outline-offset:1px}
+.linea-ing{position:absolute;left:0;right:0;border-top:1px dashed var(--verde);pointer-events:none}
+.linea-ing span{position:absolute;right:0;top:-13px;font-size:9px;color:var(--verde);font-weight:700}
+.meses-lbl{display:flex;gap:4px;margin-top:5px}
+.meses-lbl span{flex:1;text-align:center;font-size:9px;color:var(--gris);min-width:0}
+.meses-lbl span.sel{color:var(--bosque);font-weight:700}
+/* Selector de meses: doce casillas. El arreglo es la verdad; la periodicidad
+   de arriba es solo un atajo que las enciende. */
+.mesgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
+.mesgrid button{min-height:42px;border-radius:10px;background:var(--menta);
+  color:var(--gris);font-size:12px;font-weight:700}
+.mesgrid button.on{background:var(--verde);color:var(--blanco)}
+.atajos{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.atajos button{min-height:34px;padding:0 11px;border-radius:9px;background:var(--menta);
+  color:var(--bosque);font-size:12px;font-weight:600}
+
 /* Informe PDF (plantilla oculta) */
 #pdf-stage{position:absolute;left:-10000px;top:0}
 .pdf-page{
@@ -364,7 +418,14 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
       <div class="sub" id="hdr-fecha"></div>
     </div>
   </div>
-  <button class="icon-btn" id="btn-ajustes" aria-label="Ajustes">&#9881;</button>
+  <div class="hdr-acc">
+    <!-- El "+" es contextual: crea lo que corresponde a la pestana abierta.
+         Lleva .solo-editor, asi que desaparece solo en modo consulta y la
+         estructura de la app queda identica para Lidia. -->
+    <button class="icon-btn solo-editor" id="btn-nuevo" aria-label="Agregar">&#65291;</button>
+    <button class="icon-btn" id="btn-informe" aria-label="Informe">&#128196;</button>
+    <button class="icon-btn" id="btn-ajustes" aria-label="Ajustes">&#9881;</button>
+  </div>
 </header>
 
 <main>
@@ -718,6 +779,16 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
     </div>
   </section>
 
+  <!-- ============ PRESUPUESTO ============ -->
+  <section class="view" id="view-presupuesto">
+    <div class="seg" id="seg-pres">
+      <button data-pv="mes" class="active">Mes</button>
+      <button data-pv="anio">Año</button>
+    </div>
+    <div id="pres-mes"></div>
+    <div id="pres-anio" style="display:none"></div>
+  </section>
+
   <!-- ============ INFORME ============ -->
   <section class="view" id="view-informe">
     <div class="card">
@@ -731,14 +802,17 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 
 </main>
 
+<!-- Cuatro destinos. Agregar e Informe salieron de aqui a proposito: no son
+     lugares a los que vuelves, son acciones que haces y de las que sales, y
+     viven en el encabezado. Efecto lateral util: la barra ya no cambia de
+     tamano entre el modo editor y el modo consulta. -->
 <nav class="tabbar">
   <button data-v="resumen" class="active"><span class="ic">&#8962;</span>Resumen</button>
   <button data-v="portafolio"><span class="ic">&#9776;</span>Portafolio</button>
   <!-- Sin icono: solo la palabra. El espaciador de 18px mantiene la etiqueta a
        la misma altura que la de los demas tabs. -->
   <button data-v="renta" id="tab-renta"><span class="ic" aria-hidden="true" style="height:18px"></span>Renta</button>
-  <button data-v="agregar" id="tab-agregar"><span class="ic">&#65291;</span>Agregar</button>
-  <button data-v="informe"><span class="ic">&#128196;</span>Informe</button>
+  <button data-v="presupuesto" id="tab-presupuesto"><span class="ic" aria-hidden="true" style="height:18px"></span>Presupuesto</button>
 </nav>
 
 <!-- Hoja: ficha de detalle -->
@@ -892,7 +966,7 @@ const Fecha = {
 
 /* ============ Store: localStorage + fallback en memoria ============ */
 const DEFAULT_DATA = () => ({
-  version: 11,
+  version: 12,
   meta: {
     actualizadoEn: new Date().toISOString(),
     dispositivoOrigen: null,   // se asigna en Store.load la primera vez
@@ -920,11 +994,102 @@ const DEFAULT_DATA = () => ({
   titulares: ['Juan José', 'Massi', 'Conjunto'],
   instrumentos: [],
   inmuebles: [],
-  snapshots: []
+  snapshots: [],
+  /* Presupuesto familiar. Flujo de caja del hogar: NO entra en el patrimonio
+     ni en ninguna cifra consolidada. Nace vacío en una instalación nueva; la
+     siembra con las partidas reales ocurre en la migración v11 → v12. */
+  presupuesto: { config: { categorias: Store.categoriasBase() }, ingresos: [], gastos: [] }
 });
 
 const Store = {
   KEY: 'patrimonio_v1',
+
+  /* Categorías del presupuesto. El color va atado a la CATEGORÍA y no al
+     tamaño de la porción: si se reasignara por magnitud, el anillo cambiaría
+     de significado cada mes y se perdería el reconocimiento. El orden de esta
+     lista es también el orden de las porciones, y alterna claro/oscuro a
+     propósito para que dos vecinas nunca compartan luminosidad — eso, más que
+     el matiz, es lo que hacía ilegible una rampa de un solo verde. Se evitan
+     el ámbar (reservado a alertas) y el rojo (reservado a pérdidas). */
+  categoriasBase(){
+    return [
+      { id:'alimentacion',    nombre:'Alimentación',          color:'#1ec677' },
+      { id:'educacion',       nombre:'Educación',             color:'#0d4029' },
+      { id:'entretenimiento', nombre:'Entretenimiento',       color:'#5ed6d0' },
+      { id:'servicios',       nombre:'Servicios básicos',     color:'#0f7d8c' },
+      { id:'transporte',      nombre:'Transporte',            color:'#b8dd6b' },
+      { id:'deuda',           nombre:'Compromisos bancarios', color:'#1d5fa8' },
+      { id:'cuidado',         nombre:'Cuidado personal',      color:'#9fd3bb' },
+      { id:'salud',           nombre:'Salud y fitness',       color:'#5d9e1f' },
+      { id:'otros',           nombre:'Otros',                 color:'#6b7f74' }
+    ];
+  },
+
+  /* Siembra del presupuesto con las partidas reales de la hoja de cálculo.
+     No es data demo: son los renglones del usuario. Las líneas que en la hoja
+     estaban en blanco entran en cero y marcadas porConfirmar, para que la app
+     diga "falta este dato" en vez de fingir que el presupuesto está completo.
+     Los cargos en dólares se guardan EN DÓLARES y se convierten al mostrar:
+     en la hoja estaban congelados a una tasa fija y envejecían en silencio. */
+  presupuestoInicial(){
+    const T = [1,2,3,4,5,6,7,8,9,10,11,12];
+    const g = (nombre, categoria, monto, opt) => Object.assign({
+      id: this.uuid(), nombre, categoria, titular: 'Conjunto', moneda: 'DOP',
+      monto, mesesAplica: T.slice(), diaCobro: null, montoPorMes: {},
+      fechaFin: null, ajusteAnual: 0, esencial: true, porConfirmar: false,
+      activo: true, notas: ''
+    }, opt || {});
+    return {
+      config: { categorias: this.categoriasBase() },
+      ingresos: [
+        { id: this.uuid(), nombre: 'Salario Lidia Massiel', titular: 'Massi', moneda: 'DOP',
+          monto: 254000, tipo: 'fijo', mesesAplica: T.slice(), montoPorMes: {},
+          activo: true, porConfirmar: false, notas: '' },
+        { id: this.uuid(), nombre: 'Ingreso Juan José (comisiones)', titular: 'Juan José', moneda: 'DOP',
+          monto: 0, tipo: 'variable', mesesAplica: T.slice(), montoPorMes: {},
+          activo: true, porConfirmar: true,
+          notas: 'Piso conservador: lo mínimo que entra en un mes flojo. Un promedio haría que el presupuesto mienta justamente en los meses malos.' }
+      ],
+      gastos: [
+        g('Edesur Velascasas', 'servicios', 7082.90, { diaCobro: 10 }),
+        g('CAASD', 'servicios', 400, { diaCobro: 10 }),
+        g('Gas propano', 'servicios', 1000, { diaCobro: 5 }),
+        g('Claro internet hogar', 'servicios', 1435, { diaCobro: 14 }),
+        g('Limpieza hogar (Mirkella)', 'servicios', 7500, { diaCobro: 31 }),
+        g('Plan móvil Juan José', 'servicios', 800, { diaCobro: 14, notas: 'Al 6to mes sube a RD$2,500.' }),
+
+        g('PriceSmart', 'alimentacion', 48000),
+        g('Misceláneos Nacional', 'alimentacion', 12000),
+        g('Agua botellones', 'alimentacion', 1600),
+
+        g('Plan de pago Onze Luxury', 'deuda', 0, { diaCobro: 15, porConfirmar: true }),
+
+        g('Salón belleza Lidia Massiel', 'cuidado', 2000, { titular: 'Massi', esencial: false }),
+        g('Barbería Juan José Abreu', 'cuidado', 1500, { titular: 'Juan José', esencial: false }),
+        g('Barbería Sebastián Abreu', 'cuidado', 1500, { esencial: false }),
+
+        g('Colegio Loyola', 'educacion', 0, { porConfirmar: true,
+          notas: 'Si vuelve a ser semestral, apaga los meses que no apliquen y deja solo los dos de pago.' }),
+        g('Inglés New Horizon Sebastián', 'educacion', 0, { porConfirmar: true }),
+
+        g('Membresía Gold Gym', 'salud', 2800, { diaCobro: 7, esencial: false }),
+        g('Entrenador / Mirador', 'salud', 2000, { diaCobro: 1, esencial: false }),
+        g('Liga Los Muchachos / La Salle', 'salud', 400, { diaCobro: 1, esencial: false }),
+        g('Soccer Town Fútbol', 'salud', 0, { diaCobro: 14, esencial: false, porConfirmar: true }),
+
+        g('Spotify Premium', 'entretenimiento', 5.99, { moneda: 'USD', esencial: false }),
+        g('Amazon Prime', 'entretenimiento', 15.11, { moneda: 'USD', esencial: false }),
+        g('Claude IA', 'entretenimiento', 0, { moneda: 'USD', esencial: false, porConfirmar: true }),
+
+        g('Seguro vehículo Sportage', 'transporte', 2000, { mesesAplica: [1], porConfirmar: true,
+          notas: 'Mes de pago por confirmar. Monto por verificar contra la póliza.' }),
+        g('Marbete vehículos', 'transporte', 1500, { mesesAplica: [1], porConfirmar: true,
+          notas: 'Mes de pago por confirmar.' }),
+        g('Mantenimiento vehículo Kia', 'transporte', 6000, { mesesAplica: [1, 5, 9], porConfirmar: true,
+          notas: 'Meses por confirmar.' })
+      ]
+    };
+  },
   data: null,
   memOnly: false,
   /* En modo consulta el Store es una vitrina: se lee, no se escribe. Un solo
@@ -1103,7 +1268,22 @@ const Store = {
       d.version = 11;
     }
 
+    if (d.version < 12) {
+      // Presupuesto familiar. Es flujo, no patrimonio: no suma ni resta a
+      // ninguna cifra consolidada. Se siembra con las partidas reales de la
+      // hoja de cálculo; nada de lo existente se toca.
+      if (!d.presupuesto) d.presupuesto = this.presupuestoInicial();
+      d.version = 12;
+    }
+
     d.titulares = d.titulares || base.titulares.slice();
+    // Normalización del presupuesto: un respaldo viejo o un blob publicado por
+    // un dispositivo anterior puede llegar sin el bloque completo.
+    d.presupuesto = d.presupuesto || { config: {}, ingresos: [], gastos: [] };
+    d.presupuesto.config = Object.assign({ categorias: this.categoriasBase() }, d.presupuesto.config || {});
+    if (!(d.presupuesto.config.categorias || []).length) d.presupuesto.config.categorias = this.categoriasBase();
+    d.presupuesto.ingresos = d.presupuesto.ingresos || [];
+    d.presupuesto.gastos = d.presupuesto.gastos || [];
     return d;
   },
 
@@ -1680,6 +1860,128 @@ const Calc = {
       if (i.fechaVencimiento && Fecha.dias(max, i.fechaVencimiento) > 0) max = i.fechaVencimiento;
     }
     return max;
+  },
+
+  /* ---------- Presupuesto familiar ----------
+     Supuestos declarados:
+     - Es FLUJO, no patrimonio. Ninguna cifra de aquí entra en el total
+       patrimonial, ni lo suma ni lo resta.
+     - Categoría y periodicidad son ejes INDEPENDIENTES. Una partida vive en
+       una categoría (a qué se destina) y ocurre en unos meses (cuándo se
+       paga). Tratar "no mensual" como si fuera una categoría es lo que hacía
+       que el seguro del vehículo pesara cero en el reparto del gasto.
+     - Los meses se guardan como arreglo explícito (mesesAplica). La etiqueta
+       de periodicidad es solo un atajo de la interfaz que llena ese arreglo:
+       así un trimestral que arranca en febrero cae en 2-5-8-11 y no en
+       1-4-7-10, y una colegiatura cae exactamente donde se paga.
+     - La cifra comparable contra un ingreso mensual es el GASTO MENSUAL
+       EQUIVALENTE = total del año ÷ 12. El promedio de las mensualidades deja
+       fuera lo semestral y lo anual, y por esa vía sobreestima el excedente. */
+  pres(){
+    return Store.data.presupuesto || { config: { categorias: [] }, ingresos: [], gastos: [] };
+  },
+  presCategorias(){
+    const c = this.pres().config;
+    return (c && c.categorias) || [];
+  },
+  presCategoria(id){
+    return this.presCategorias().find(c => c.id === id) ||
+           { id: 'otros', nombre: 'Otros', color: '#6b7f74' };
+  },
+
+  /* Monto de una partida en un mes dado, ya convertido a la moneda base.
+     montoPorMes permite que una cuota difiera de las otras (la colegiatura
+     con inscripción, por ejemplo) sin tener que duplicar la partida. */
+  presMontoMes(item, mes){
+    if (!item || item.activo === false) return 0;
+    const meses = item.mesesAplica || [];
+    if (meses.indexOf(mes) === -1) return 0;
+    const esp = item.montoPorMes ? item.montoPorMes[String(mes)] : null;
+    const m = (esp !== null && esp !== undefined && esp !== '' && !isNaN(esp))
+      ? Number(esp) : (Number(item.monto) || 0);
+    return this.aBase(m, item.moneda || 'DOP');
+  },
+
+  /* Etiqueta legible de la periodicidad, derivada del arreglo de meses. */
+  presPeriodicidad(item){
+    const n = (item.mesesAplica || []).length;
+    const mapa = { 12: 'Mensual', 6: 'Bimestral', 4: 'Trimestral', 3: 'Cuatrimestral', 2: 'Semestral', 1: 'Anual' };
+    if (n === 0) return 'Sin meses';
+    return mapa[n] || (n + ' pagos al año');
+  },
+
+  /* Los doce meses del año con ingreso, gasto, saldo y saldo acumulado.
+     El acumulado importa: un enero en déficit no es lo mismo si vienes de seis
+     meses de excedente que si arrancas el año en cero. */
+  presAnio(){
+    const p = this.pres();
+    const meses = [];
+    for (let m = 1; m <= 12; m++) {
+      let ingreso = 0, gasto = 0;
+      const porCat = {};
+      (p.ingresos || []).forEach(x => { ingreso += this.presMontoMes(x, m); });
+      (p.gastos || []).forEach(x => {
+        const v = this.presMontoMes(x, m);
+        if (!v) return;
+        gasto += v;
+        porCat[x.categoria] = (porCat[x.categoria] || 0) + v;
+      });
+      meses.push({ mes: m, ingreso, gasto, saldo: ingreso - gasto, porCat });
+    }
+    let acc = 0;
+    meses.forEach(x => { acc += x.saldo; x.acumulado = acc; });
+    const gastoAnual = meses.reduce((s, x) => s + x.gasto, 0);
+    const ingresoAnual = meses.reduce((s, x) => s + x.ingreso, 0);
+    const deficit = meses.filter(x => x.saldo < 0);
+    return {
+      meses, gastoAnual, ingresoAnual,
+      gastoEquivalente: gastoAnual / 12,
+      ingresoEquivalente: ingresoAnual / 12,
+      saldoEquivalente: (ingresoAnual - gastoAnual) / 12,
+      tasaAhorro: ingresoAnual > 0 ? (ingresoAnual - gastoAnual) / ingresoAnual : null,
+      deficit,
+      // Lo que habría que apartar cada mes para cubrir los meses que no se
+      // pagan solos. Es una reserva de liquidez, no una inversión a plazo.
+      reservaSugerida: deficit.length ? deficit.reduce((s, x) => s - x.saldo, 0) / 12 : 0,
+      pico: meses.reduce((a, b) => (b.gasto > a.gasto ? b : a), meses[0])
+    };
+  },
+
+  /* Reparto del gasto ANUAL por categoría, expresado también como equivalente
+     mensual. Se calcula sobre el año completo, no sobre el mes en curso: si se
+     tomara un solo mes, la colegiatura aparecería al 0% once veces al año. */
+  presPorCategoria(){
+    const a = this.presAnio();
+    const acum = {};
+    a.meses.forEach(m => { for (const k in m.porCat) acum[k] = (acum[k] || 0) + m.porCat[k]; });
+    const tot = a.gastoAnual;
+    return this.presCategorias().map(c => {
+      const anual = acum[c.id] || 0;
+      return { id: c.id, nombre: c.nombre, color: c.color, anual,
+               mensual: anual / 12, pct: tot > 0 ? anual / tot : 0 };
+    }).filter(c => c.anual > 0);
+  },
+
+  /* Cobertura patrimonial: qué porción del gasto mensual equivalente ya la
+     pagan las rentas netas y los intereses de pago mensual. El denominador es
+     el equivalente y no el promedio de mensualidades — usar el segundo infla
+     la cobertura exactamente en la proporción de lo que se omite. */
+  presCobertura(){
+    const a = this.presAnio();
+    const pasivo = this.totales('Todos').flujoMensual;
+    return {
+      pasivo, gasto: a.gastoEquivalente,
+      ratio: a.gastoEquivalente > 0 ? pasivo / a.gastoEquivalente : null
+    };
+  },
+
+  /* Partidas sin monto o sin meses. Se cuentan aparte para que la app pueda
+     decir "esto está incompleto" en vez de presentar un total como si fuera
+     definitivo. */
+  presPendientes(){
+    const p = this.pres();
+    return (p.gastos || []).filter(x => x.porConfirmar || !x.monto || !(x.mesesAplica || []).length)
+      .concat((p.ingresos || []).filter(x => x.porConfirmar || !x.monto));
   }
 };
 </script>
@@ -1690,6 +1992,10 @@ const Calc = {
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const PALETA = ['#1ec677','#0d4029','#6b7f74','#8fd9b4','#3a6e54','#c9ecd6','#d98b0d','#a9c7b6'];
+const MES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MES_INICIAL = ['E','F','M','A','M','J','J','A','S','O','N','D'];
+const DESTINOS = ['resumen','portafolio','renta','presupuesto'];
 
 const UI = {
   vista: 'resumen',
@@ -1702,6 +2008,10 @@ const UI = {
   metricaRenta: 'ocupacion',   // segunda serie: ocupacion o RevPAR
   inmuebleRenta: null,         // id del inmueble mostrado en el tab Renta
   serieRenta: 'neto',          // ingreso mensual: neto / bruto / ambos
+  presVista: 'mes',            // Mes / Año en el tab Presupuesto
+  presMesSel: null,            // mes resaltado en la barra del año
+  presCatSel: null,            // categoría resaltada en el anillo
+  ultimoDestino: 'resumen',    // qué tab se pinta activo cuando abres Agregar o Informe
   editando: null, // {tipo, id} cuando se edita un activo existente
   charts: {},
   cargandoChart: false,
@@ -1724,6 +2034,9 @@ const UI = {
       b.addEventListener('click', () => UI.irA(b.dataset.v));
     });
     $('btn-ajustes').addEventListener('click', () => UI.abrirAjustes());
+    // El "+" del encabezado crea lo que corresponde a la pestaña abierta.
+    $('btn-nuevo').addEventListener('click', () => UI.nuevo());
+    $('btn-informe').addEventListener('click', () => UI.irA('informe'));
     $('sheet-cerrar').addEventListener('click', () => UI.cerrarSheet());
     $('sheet-bg').addEventListener('click', () => UI.cerrarSheet());
     $('card-flujo').addEventListener('click', () => {
@@ -1745,6 +2058,8 @@ const UI = {
     UI.segmento('seg-renta-serie', 'rs', v => { UI.serieRenta = v; UI.renderRenta(); });
     $('renta-sel').addEventListener('change', () => { UI.inmuebleRenta = $('renta-sel').value; UI.renderRenta(); });
     $('renta-nuevo').addEventListener('click', () => RentaCorta.abrir(UI.inmuebleRenta, null));
+    // Presupuesto
+    UI.segmento('seg-pres', 'pv', v => { UI.presVista = v; UI.renderPresupuesto(); });
     // Formularios
     Forms.init();
     Miles.activar();
@@ -1753,14 +2068,30 @@ const UI = {
     UI.renderTodo();
   },
 
+  /* El "+" es contextual: en Presupuesto crea una partida, en Renta registra
+     un mes, y en el resto abre el alta de activos. Antes, el tab Agregar
+     obligaba a elegir la clase en un primer paso que el contexto ya conoce. */
+  nuevo(){
+    if (Modo.consulta()) return;
+    if (UI.vista === 'presupuesto') return Presup.abrir('gasto', null);
+    if (UI.vista === 'renta') return RentaCorta.abrir(UI.inmuebleRenta, null);
+    // Alta de activo: se suelta la edición en curso para no sobrescribir por
+    // accidente el activo que se estaba editando. El borrador del formulario
+    // se conserva, que es lo que pide "nunca perder datos".
+    UI.editando = null;
+    const t = $('agregar-titulo');
+    if (t) t.textContent = 'Agregar activo';
+    UI.irA('agregar');
+  },
+
   /* ---------- Modo consulta ---------- */
   /* Un solo lugar decide qué se ve: la clase del body oculta todo lo marcado
      como .solo-editor y la pestaña Agregar desaparece de la barra. */
   aplicarModo(){
     const c = Modo.consulta();
     document.body.classList.toggle('consulta', c);
-    const tab = $('tab-agregar');
-    if (tab) tab.style.display = c ? 'none' : '';
+    // El "+" se oculta por CSS (.solo-editor). La barra inferior no cambia:
+    // Lidia ve exactamente la misma estructura, sin el botón de crear.
     if (c && UI.vista === 'agregar') UI.irA('resumen');
     // El tab Renta se conserva en modo consulta: Lidia ve el historico, no lo edita.
     UI.renderBanner();
@@ -1803,10 +2134,14 @@ const UI = {
     UI.vista = v;
     document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
     $('view-' + v).classList.add('active');
-    document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+    // Agregar e Informe ya no son pestañas: mientras estás en ellas, la barra
+    // deja marcado el último destino para no quedarse sin nada resaltado.
+    if (DESTINOS.indexOf(v) !== -1) UI.ultimoDestino = v;
+    document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.v === UI.ultimoDestino));
     if (v === 'resumen') UI.renderResumen();
     if (v === 'portafolio') UI.renderPortafolio();
     if (v === 'renta') UI.renderRenta();
+    if (v === 'presupuesto') UI.renderPresupuesto();
     if (v === 'informe') Informe.renderPreview();
     window.scrollTo(0, 0);
   },
@@ -1815,6 +2150,218 @@ const UI = {
     UI.renderResumen();
     UI.renderPortafolio();
     if (UI.vista === 'renta') UI.renderRenta();
+    if (UI.vista === 'presupuesto') UI.renderPresupuesto();
+  },
+
+  /* ---------- Presupuesto ---------- */
+  renderPresupuesto(){
+    const p = Calc.pres();
+    const hay = (p.gastos || []).length > 0 || (p.ingresos || []).length > 0;
+    $('pres-mes').style.display = UI.presVista === 'mes' ? '' : 'none';
+    $('pres-anio').style.display = UI.presVista === 'anio' ? '' : 'none';
+    if (!hay) {
+      const vacio = `
+        <div class="empty">
+          <div class="big">&#9635;</div>
+          <div>Todavía no hay presupuesto.</div>
+          <div class="tiny" style="margin-top:8px;line-height:1.5">
+            Agrega gastos e ingresos con el <b>+</b> del encabezado, o carga de una vez
+            las partidas de tu hoja de cálculo para empezar desde ahí.
+          </div>
+          <div class="btn-row solo-editor" style="justify-content:center;margin-top:16px">
+            <button class="btn mini" onclick="Presup.cargarInicial()">Cargar partidas de la hoja</button>
+          </div>
+        </div>`;
+      $('pres-mes').innerHTML = vacio;
+      $('pres-anio').innerHTML = vacio;
+      return;
+    }
+    if (UI.presVista === 'mes') UI.renderPresMes(); else UI.renderPresAnio();
+  },
+
+  renderPresMes(){
+    const base = Store.data.config.monedaBase;
+    const a = Calc.presAnio();
+    const cats = Calc.presPorCategoria();
+    const cob = Calc.presCobertura();
+    const pend = Calc.presPendientes().length;
+    const saldo = a.saldoEquivalente;
+    const neg = saldo < 0;
+
+    const leyenda = cats.map(c => `
+      <button class="${UI.presCatSel === c.id ? 'on' : ''}" onclick="UI.filtrarCat('${c.id}')">
+        <span class="dot" style="background:${c.color}"></span>
+        <span>${c.nombre}</span>
+        <span class="pc">${Fmt.pct(c.pct, 1)}</span>
+      </button>`).join('');
+
+    const filas = cats.map(c => `
+      <button class="cat-row ${UI.presCatSel === c.id ? 'sel' : ''}" onclick="Presup.verCategoria('${c.id}')">
+        <span class="dot" style="background:${c.color}"></span>
+        <span class="nm">${c.nombre}</span>
+        <span class="mt">
+          <span class="v">${Fmt.money(c.mensual, base, 0)}</span><br>
+          <span class="p">${Fmt.pct(c.pct, 1)} · ${Fmt.money(c.anual, base, 0)} al año</span>
+        </span>
+      </button>`).join('');
+
+    $('pres-mes').innerHTML = `
+      ${pend ? `<div class="alert">${pend} partida${pend > 1 ? 's' : ''} sin monto o sin meses confirmados.
+        Mientras tanto estas cifras están incompletas.</div>` : ''}
+
+      <div class="card hero-card">
+        <h3>Excedente mensual equivalente</h3>
+        <div class="hero" style="${neg ? 'color:var(--rojo)' : ''}">
+          <span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(saldo)}
+        </div>
+        <div class="hero-note">Ingreso menos gasto, con lo semestral y lo anual ya prorrateado.
+          Es flujo de caja del hogar: no entra en el patrimonio.</div>
+        <div class="pres-kpis">
+          <div><div class="l">Ingreso</div><div class="v">${Fmt.money(a.ingresoEquivalente, base, 0)}</div></div>
+          <div><div class="l">Gasto equivalente</div><div class="v">${Fmt.money(a.gastoEquivalente, base, 0)}</div></div>
+          <div><div class="l">Tasa de ahorro</div><div class="v">${Fmt.pct(a.tasaAhorro, 1)}</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Reparto del gasto</h3>
+        <div class="dona-wrap">
+          <div class="chart-box"><canvas id="pres-dona"></canvas></div>
+          <div class="leyenda ${UI.presCatSel ? 'filtrada' : ''}" id="pres-leyenda">${leyenda}</div>
+        </div>
+        <div class="tiny" style="margin-top:10px;line-height:1.5">
+          Proporción sobre el gasto del año completo, no sobre el mes en curso: medido por mes,
+          la colegiatura aparecería en cero once veces al año.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Categorías <span class="tiny" style="text-transform:none;letter-spacing:0">· equivalente mensual</span></h3>
+        ${filas}
+      </div>
+
+      ${cob.gasto > 0 ? `
+      <div class="card">
+        <h3>Cobertura patrimonial</h3>
+        <div class="kv"><span class="k">Ingreso pasivo mensual</span><span class="v">${Fmt.money(cob.pasivo, base)}</span></div>
+        <div class="kv"><span class="k">Gasto mensual equivalente</span><span class="v">${Fmt.money(cob.gasto, base)}</span></div>
+        <div class="kv"><span class="k">Cobertura</span><span class="v" style="color:var(--verde)">${Fmt.pct(cob.ratio, 1)}</span></div>
+        <div class="tiny" style="margin-top:8px;line-height:1.5">
+          Qué porción de los compromisos del hogar ya la pagan las rentas netas y los intereses
+          de pago mensual. El denominador es el equivalente: usar el promedio de mensualidades
+          inflaría la cobertura justo en lo que se omite.
+        </div>
+      </div>` : ''}
+
+      <div class="card">
+        <div class="kv"><span class="k">Gasto proyectado del año</span><span class="v">${Fmt.money(a.gastoAnual, base, 0)}</span></div>
+        <div class="kv"><span class="k">Meses en déficit</span><span class="v">${a.deficit.length}</span></div>
+        <div class="btn-row"><button class="btn sec mini" style="width:100%" onclick="UI.presIrAnio()">Ver el año mes a mes</button></div>
+      </div>`;
+
+    UI.dibujarDonaPres(cats);
+  },
+
+  presIrAnio(){
+    UI.presVista = 'anio';
+    document.querySelectorAll('#seg-pres button').forEach(b => b.classList.toggle('active', b.dataset.pv === 'anio'));
+    UI.renderPresupuesto();
+    window.scrollTo(0, 0);
+  },
+
+  filtrarCat(id){
+    UI.presCatSel = UI.presCatSel === id ? null : id;
+    UI.renderPresMes();
+  },
+
+  dibujarDonaPres(cats){
+    const base = Store.data.config.monedaBase;
+    const box = $('pres-dona');
+    if (!box) return;
+    if (typeof Chart === 'undefined') {
+      box.parentNode.innerHTML = '<div class="chart-vacio"><div>No se pudo cargar la librería de gráficos.' +
+        '<div style="margin-top:10px"><button class="btn mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div></div>';
+      return;
+    }
+    const data = cats.map(c => c.anual);
+    // El color sale de la categoría, nunca del índice de la porción: así el
+    // anillo, la lista y el informe hablan siempre del mismo color.
+    const colores = cats.map(c => UI.presCatSel && UI.presCatSel !== c.id ? c.color + '33' : c.color);
+    UI.chart('pres-dona', {
+      type: 'doughnut',
+      data: { labels: cats.map(c => c.nombre), datasets: [{ data, backgroundColor: colores, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => {
+            const tot = data.reduce((s, x) => s + x, 0);
+            return ` ${cats[c.dataIndex].nombre}: ${Fmt.money(c.parsed / 12, base, 0)}/mes (${Fmt.pct(tot ? c.parsed / tot : 0, 1)})`;
+          } } }
+        },
+        onClick: (e, els) => { if (els && els.length) UI.filtrarCat(cats[els[0].index].id); }
+      }
+    });
+  },
+
+  renderPresAnio(){
+    const base = Store.data.config.monedaBase;
+    const a = Calc.presAnio();
+    const H = 94;
+    const max = Math.max.apply(null, a.meses.map(m => m.gasto).concat([a.ingresoEquivalente, 1]));
+    const yIng = Math.min(H, Math.round(a.ingresoEquivalente / max * H));
+
+    const barras = a.meses.map(m => {
+      const h = Math.max(2, Math.round(m.gasto / max * H));
+      return `<button class="col${UI.presMesSel === m.mes ? ' sel' : ''}" onclick="Presup.verMes(${m.mes})"
+        aria-label="${MES_LARGO[m.mes - 1]}: ${Fmt.money(m.gasto, base, 0)}">
+        <span class="bar${m.saldo < 0 ? ' def' : ''}" style="height:${h}px"></span></button>`;
+    }).join('');
+
+    const etiquetas = MES_INICIAL.map((x, i) =>
+      `<span class="${UI.presMesSel === i + 1 ? 'sel' : ''}">${x}</span>`).join('');
+
+    const filas = a.meses.map(m => `
+      <button class="part-row" onclick="Presup.verMes(${m.mes})">
+        <span class="info">
+          <span class="nm2">${MES_LARGO[m.mes - 1]}</span>
+          <span class="sb">Saldo del mes ${Fmt.money(m.saldo, base, 0)} · acumulado ${Fmt.money(m.acumulado, base, 0)}</span>
+        </span>
+        <span class="mto" style="${m.saldo < 0 ? 'color:var(--ambar)' : ''}">${Fmt.money(m.gasto, base, 0)}</span>
+      </button>`).join('');
+
+    const alerta = a.deficit.length ? `
+      <div class="alert">
+        ${a.deficit.length} mes${a.deficit.length > 1 ? 'es' : ''} en déficit:
+        ${a.deficit.map(m => `${MES_CORTO[m.mes - 1]} (${Fmt.money(m.saldo, base, 0)})`).join(', ')}.
+        Reserva sugerida: ${Fmt.money(a.reservaSugerida, base, 0)} al mes.
+      </div>` : '';
+
+    $('pres-anio').innerHTML = `
+      <div class="card hero-card">
+        <h3>Gasto proyectado del año</h3>
+        <div class="hero"><span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(a.gastoAnual, 0)}</div>
+        <div class="hero-note">Ingreso proyectado ${Fmt.money(a.ingresoAnual, base, 0)} ·
+          saldo del año ${Fmt.money(a.ingresoAnual - a.gastoAnual, base, 0)}</div>
+      </div>
+
+      ${alerta}
+
+      <div class="card">
+        <h3>Gasto mes a mes</h3>
+        <div class="barras">
+          <div class="linea-ing" style="bottom:${yIng}px"><span>ingreso ${Fmt.money(a.ingresoEquivalente, base, 0)}</span></div>
+          ${barras}
+        </div>
+        <div class="meses-lbl">${etiquetas}</div>
+        <div class="tiny" style="margin-top:10px">Toca un mes para ver de qué está compuesto.
+          En ámbar, los meses donde el gasto supera al ingreso.</div>
+      </div>
+
+      <div class="card">
+        <h3>Detalle por mes</h3>
+        ${filas}
+      </div>`;
   },
 
   /* ---------- Resumen ---------- */
@@ -2258,7 +2805,11 @@ const UI = {
     UI.cargandoChart = true;
     Libs.cargar('Chart').then((ok) => {
       UI.cargandoChart = false;
-      if (ok) { UI.dibujarLinea(); UI.dibujarPies(); return; }
+      if (ok) {
+        UI.dibujarLinea(); UI.dibujarPies();
+        if (UI.vista === 'presupuesto') UI.renderPresupuesto();
+        return;
+      }
       const v = $('chart-linea-vacio');
       if (v) v.innerHTML = '<div>No se pudo cargar la librería de gráficos. Verifica la conexión.<div style="margin-top:10px"><button class="btn mini" onclick="UI.reintentarGraficos()">Reintentar</button></div></div>';
     });
@@ -3262,6 +3813,339 @@ const RentaCorta = {
     UI.cerrarSheet();
     UI.renderTodo();
     UI.renderRenta();
+  }
+};
+
+/* ============ Presupuesto — altas, edición y hojas de detalle ============
+   Toda partida se edita en una hoja modal, no en una pestaña: el presupuesto
+   se toca muchas veces y de a poco, y sacar al usuario de la vista para
+   cambiar un monto rompe el hilo. */
+const Presup = {
+  meses: [],          // meses encendidos mientras se edita
+  editandoId: null,
+  editandoTipo: null,
+
+  /* Carga las partidas reales de la hoja de cálculo. No es data demo: son los
+     renglones del usuario, con las líneas en blanco en cero y marcadas. */
+  cargarInicial(){
+    if (Modo.consulta()) return;
+    const p = Store.data.presupuesto;
+    if ((p.gastos || []).length || (p.ingresos || []).length) return;
+    Store.data.presupuesto = Store.presupuestoInicial();
+    Store.save();
+    UI.renderPresupuesto();
+  },
+
+  item(tipo, id){
+    const p = Store.data.presupuesto;
+    return (tipo === 'ingreso' ? p.ingresos : p.gastos).find(x => x.id === id) || null;
+  },
+
+  /* ---------- Formulario ---------- */
+  abrir(tipo, id){
+    if (Modo.consulta()) return;
+    const it = id ? Presup.item(tipo, id) : null;
+    Presup.editandoTipo = tipo;
+    Presup.editandoId = id || null;
+    Presup.meses = it ? (it.mesesAplica || []).slice() : [1,2,3,4,5,6,7,8,9,10,11,12];
+
+    const cats = Calc.presCategorias();
+    const titulares = Store.data.titulares || ['Juan José','Massi','Conjunto'];
+    const esGasto = tipo === 'gasto';
+    const sel = (v, x) => v === x ? ' selected' : '';
+
+    UI.abrirSheet(
+      (id ? 'Editar' : 'Nuevo') + (esGasto ? ' gasto' : ' ingreso'),
+      `
+      <fieldset>
+        <label>Nombre</label>
+        <input id="pg-nombre" value="${it ? Presup.esc(it.nombre) : ''}" placeholder="${esGasto ? 'Colegio Loyola' : 'Salario'}">
+        ${esGasto ? `
+        <label>Categoría</label>
+        <select id="pg-cat">${cats.map(c => `<option value="${c.id}"${sel(it ? it.categoria : 'otros', c.id)}>${c.nombre}</option>`).join('')}</select>` : `
+        <label>Tipo de ingreso</label>
+        <select id="pg-tipo">
+          <option value="fijo"${sel(it ? it.tipo : 'fijo', 'fijo')}>Fijo</option>
+          <option value="variable"${sel(it ? it.tipo : 'fijo', 'variable')}>Variable (piso conservador)</option>
+        </select>`}
+        <div class="fila2">
+          <div><label>Moneda</label>
+            <select id="pg-moneda">
+              <option${sel(it ? it.moneda : 'DOP', 'DOP')}>DOP</option>
+              <option${sel(it ? it.moneda : 'DOP', 'USD')}>USD</option>
+            </select></div>
+          <div><label>Titular</label>
+            <select id="pg-titular">${titulares.map(t => `<option${sel(it ? it.titular : 'Conjunto', t)}>${t}</option>`).join('')}</select></div>
+        </div>
+        <div class="fila2">
+          <div><label>Monto por pago</label><input id="pg-monto" inputmode="decimal" data-miles></div>
+          ${esGasto ? '<div><label>Día de cobro <span class="tiny">(opcional)</span></label><input id="pg-dia" inputmode="decimal"></div>' : '<div></div>'}
+        </div>
+        ${!esGasto ? '<div class="tiny" style="margin-top:2px;line-height:1.5">En un ingreso variable escribe el piso: lo mínimo que entra en un mes flojo. Un promedio haría que el presupuesto mienta justo en los meses malos.</div>' : ''}
+      </fieldset>
+
+      <fieldset>
+        <div class="legend">Meses en que se paga</div>
+        <div class="tiny" style="line-height:1.5">La periodicidad es solo un atajo que enciende casillas. Lo que manda son los meses encendidos, así que puedes dejar cualquier combinación.</div>
+        <div class="atajos">
+          <button onclick="Presup.atajo(12)">Mensual</button>
+          <button onclick="Presup.atajo(6)">Bimestral</button>
+          <button onclick="Presup.atajo(4)">Trimestral</button>
+          <button onclick="Presup.atajo(3)">Cuatrimestral</button>
+          <button onclick="Presup.atajo(2)">Semestral</button>
+          <button onclick="Presup.atajo(1)">Anual</button>
+          <button onclick="Presup.atajo(0)">Ninguno</button>
+        </div>
+        <div class="mesgrid" id="pg-meses"></div>
+      </fieldset>
+
+      ${esGasto ? `
+      <fieldset>
+        <div class="legend">Opcional</div>
+        <label>Ajuste anual estimado (%) <span class="tiny">(inflación o alza de tarifa)</span></label>
+        <input id="pg-ajuste" inputmode="decimal" value="${it && it.ajusteAnual ? (it.ajusteAnual * 100).toFixed(2) : ''}" placeholder="0.00">
+        <div class="switch-row" style="margin-top:6px">
+          <span>Gasto esencial</span>
+          <label class="switch"><input type="checkbox" id="pg-esencial" ${!it || it.esencial !== false ? 'checked' : ''}><span class="tr"></span><span class="th"></span></label>
+        </div>
+      </fieldset>` : ''}
+
+      <fieldset>
+        <label>Notas</label>
+        <textarea id="pg-notas" rows="2">${it ? Presup.esc(it.notas || '') : ''}</textarea>
+        <div class="err" id="pg-err"></div>
+        <div class="btn-row">
+          <button class="btn" onclick="Presup.guardar()">Guardar</button>
+        </div>
+        ${id ? `<div class="btn-row"><button class="btn peligro" onclick="Presup.borrar()">Eliminar partida</button></div>` : ''}
+        ${!id ? `<div class="btn-row"><button class="btn sec" onclick="Presup.abrir('${esGasto ? 'ingreso' : 'gasto'}', null)">Mejor un ${esGasto ? 'ingreso' : 'gasto'}</button></div>` : ''}
+      </fieldset>`);
+
+    Presup.pintarMeses();
+    Miles.activar($('sheet-body'));
+    if (it) Miles.set('pg-monto', it.monto);
+    if (it && it.diaCobro && $('pg-dia')) $('pg-dia').value = it.diaCobro;
+  },
+
+  esc(t){
+    return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  pintarMeses(){
+    const box = $('pg-meses');
+    if (!box) return;
+    box.innerHTML = MES_INICIAL.map((x, i) => {
+      const m = i + 1;
+      return `<button class="${Presup.meses.indexOf(m) !== -1 ? 'on' : ''}" onclick="Presup.toggleMes(${m})"
+        aria-label="${MES_LARGO[i]}" aria-pressed="${Presup.meses.indexOf(m) !== -1}">${MES_CORTO[i]}</button>`;
+    }).join('');
+  },
+
+  toggleMes(m){
+    const i = Presup.meses.indexOf(m);
+    if (i === -1) Presup.meses.push(m); else Presup.meses.splice(i, 1);
+    Presup.meses.sort((a, b) => a - b);
+    Presup.pintarMeses();
+  },
+
+  /* El atajo respeta el primer mes ya encendido: un trimestral que arranca en
+     febrero cae en 2-5-8-11, no en 1-4-7-10. Esa era justamente la diferencia
+     que una etiqueta de periodicidad sola no puede representar. */
+  atajo(n){
+    if (n === 0) { Presup.meses = []; return Presup.pintarMeses(); }
+    const inicio = Presup.meses.length ? Presup.meses[0] : 1;
+    const paso = 12 / n;
+    const out = [];
+    for (let k = 0; k < n; k++) out.push(((inicio - 1 + k * paso) % 12) + 1);
+    Presup.meses = out.sort((a, b) => a - b);
+    Presup.pintarMeses();
+  },
+
+  guardar(){
+    const tipo = Presup.editandoTipo, esGasto = tipo === 'gasto';
+    const err = $('pg-err');
+    const fallo = t => { err.textContent = t; err.classList.add('show'); };
+    err.classList.remove('show');
+
+    const nombre = ($('pg-nombre').value || '').trim();
+    const monto = Fmt.parse($('pg-monto').value);
+    if (!nombre) return fallo('Ponle un nombre a la partida.');
+    if (isNaN(monto) || monto < 0) return fallo('El monto no puede ser negativo. Si todavía no lo sabes, deja 0 y la app lo marcará como pendiente.');
+    if (!Presup.meses.length) return fallo('Enciende al menos un mes de pago.');
+
+    const p = Store.data.presupuesto;
+    const lista = esGasto ? p.gastos : p.ingresos;
+    let it = Presup.editandoId ? Presup.item(tipo, Presup.editandoId) : null;
+    if (!it) {
+      it = { id: Store.uuid(), montoPorMes: {}, activo: true, fechaFin: null };
+      lista.push(it);
+    }
+    it.nombre = nombre;
+    it.monto = monto;
+    it.moneda = $('pg-moneda').value;
+    it.titular = $('pg-titular').value;
+    it.mesesAplica = Presup.meses.slice();
+    it.notas = ($('pg-notas').value || '').trim();
+    // porConfirmar se apaga en cuanto tú tocas la partida: si la editaste, el
+    // dato ya es tuyo. Solo un monto en cero la deja marcada como pendiente.
+    it.porConfirmar = !(monto > 0);
+    if (esGasto) {
+      it.categoria = $('pg-cat').value;
+      const dia = Fmt.parse($('pg-dia').value);
+      it.diaCobro = (!isNaN(dia) && dia >= 1 && dia <= 31) ? dia : null;
+      const aj = Fmt.parse($('pg-ajuste').value);
+      it.ajusteAnual = isNaN(aj) ? 0 : aj / 100;
+      it.esencial = $('pg-esencial').checked;
+    } else {
+      it.tipo = $('pg-tipo').value;
+    }
+
+    Store.save();
+    UI.cerrarSheet();
+    UI.renderPresupuesto();
+  },
+
+  borrar(){
+    if (!Presup.editandoId) return;
+    if (!confirm('¿Eliminar esta partida del presupuesto?')) return;
+    const p = Store.data.presupuesto;
+    const k = Presup.editandoTipo === 'ingreso' ? 'ingresos' : 'gastos';
+    p[k] = p[k].filter(x => x.id !== Presup.editandoId);
+    Store.save();
+    UI.cerrarSheet();
+    UI.renderPresupuesto();
+  },
+
+  /* ---------- Hoja de categoría ---------- */
+  verCategoria(id){
+    const base = Store.data.config.monedaBase;
+    const cat = Calc.presCategoria(id);
+    const p = Store.data.presupuesto;
+    const items = (p.gastos || []).filter(g => g.categoria === id)
+      .map(g => ({ g, anual: [1,2,3,4,5,6,7,8,9,10,11,12].reduce((s, m) => s + Calc.presMontoMes(g, m), 0) }))
+      .sort((a, b) => b.anual - a.anual);
+    const tot = items.reduce((s, x) => s + x.anual, 0);
+
+    UI.abrirSheet(`<span class="dot" style="display:inline-block;margin-right:7px;vertical-align:1px;background:${cat.color}"></span>${cat.nombre}`, `
+      <div class="card">
+        <div class="kv"><span class="k">Equivalente mensual</span><span class="v">${Fmt.money(tot / 12, base)}</span></div>
+        <div class="kv"><span class="k">Total del año</span><span class="v">${Fmt.money(tot, base)}</span></div>
+      </div>
+      <div class="card">
+        <h3>Partidas</h3>
+        ${items.length ? items.map(x => Presup.filaPartida(x.g, x.anual / 12, base)).join('')
+          : '<div class="small">Sin partidas en esta categoría.</div>'}
+      </div>
+      <div class="btn-row solo-editor">
+        <button class="btn sec" onclick="Presup.abrir('gasto', null)">Agregar un gasto</button>
+      </div>`);
+  },
+
+  filaPartida(g, mensual, base){
+    const per = Calc.presPeriodicidad(g);
+    const mon = g.moneda !== base ? ` · ${Fmt.money(g.monto, g.moneda)}` : '';
+    const dia = g.diaCobro ? ` · día ${g.diaCobro}` : '';
+    return `
+      <button class="part-row" onclick="Presup.abrir('gasto','${g.id}')">
+        <span class="info">
+          <span class="nm2">${Presup.esc(g.nombre)}
+            ${g.porConfirmar ? '<span class="badge ambar">Por confirmar</span>' : ''}</span>
+          <span class="sb">${per}${dia}${mon}${g.esencial === false ? ' · prescindible' : ''}</span>
+        </span>
+        <span class="mto">${Fmt.money(mensual, base, 0)}<br><span class="tiny">al mes</span></span>
+      </button>`;
+  },
+
+  /* ---------- Hoja del mes ----------
+     Separa lo que se repite todos los meses de lo que cae solo en este. Son
+     las partidas de la segunda lista las que explican por qué un mes duele. */
+  verMes(m){
+    UI.presMesSel = m;
+    if (UI.presVista === 'anio') UI.renderPresAnio();
+    const base = Store.data.config.monedaBase;
+    const a = Calc.presAnio();
+    const d = a.meses[m - 1];
+    const p = Store.data.presupuesto;
+
+    const recurrentes = [], puntuales = [];
+    (p.gastos || []).forEach(g => {
+      const v = Calc.presMontoMes(g, m);
+      if (!v) return;
+      ((g.mesesAplica || []).length === 12 ? recurrentes : puntuales).push({ g, v });
+    });
+    puntuales.sort((x, y) => y.v - x.v);
+
+    // Los recurrentes se agrupan por categoría: doce renglones sueltos no se
+    // leen, y el color ya viene atado a la categoría.
+    const porCat = {};
+    recurrentes.forEach(x => {
+      (porCat[x.g.categoria] = porCat[x.g.categoria] || { total: 0, items: [] });
+      porCat[x.g.categoria].total += x.v;
+      porCat[x.g.categoria].items.push(x);
+    });
+
+    const bloquesCat = Calc.presCategorias().filter(c => porCat[c.id]).map(c => {
+      const b = porCat[c.id];
+      return `
+        <div class="cat-row" style="cursor:default">
+          <span class="dot" style="background:${c.color}"></span>
+          <span class="nm">${c.nombre}</span>
+          <span class="mt"><span class="v">${Fmt.money(b.total, base, 0)}</span></span>
+        </div>
+        <div style="padding:0 0 6px 20px">
+          ${b.items.map(x => `<div class="kv"><span class="k">${Presup.esc(x.g.nombre)}</span><span class="v">${Fmt.money(x.v, base, 0)}</span></div>`).join('')}
+        </div>`;
+    }).join('');
+
+    const ingresos = (p.ingresos || []).map(i => ({ i, v: Calc.presMontoMes(i, m) })).filter(x => x.v > 0);
+
+    UI.abrirSheet(MES_LARGO[m - 1], `
+      <div class="card hero-card">
+        <h3>Saldo del mes</h3>
+        <div class="hero" style="${d.saldo < 0 ? 'color:var(--ambar)' : ''}">
+          <span class="cur">${Fmt.simbolo(base)}</span>${Fmt.num(d.saldo, 0)}
+        </div>
+        <div class="hero-note">Acumulado del año hasta ${MES_CORTO[m - 1]}: ${Fmt.money(d.acumulado, base, 0)}.
+          ${d.saldo < 0 ? 'Este mes no se paga solo: sale de la reserva o del excedente de los meses anteriores.' : ''}</div>
+        <div class="pres-kpis">
+          <div><div class="l">Ingreso</div><div class="v">${Fmt.money(d.ingreso, base, 0)}</div></div>
+          <div><div class="l">Gasto</div><div class="v">${Fmt.money(d.gasto, base, 0)}</div></div>
+          <div><div class="l">Acumulado</div><div class="v">${Fmt.money(d.acumulado, base, 0)}</div></div>
+        </div>
+      </div>
+
+      ${puntuales.length ? `
+      <div class="card">
+        <h3>Cae solo en este mes</h3>
+        ${puntuales.map(x => `
+          <button class="part-row" onclick="Presup.abrir('gasto','${x.g.id}')">
+            <span class="info">
+              <span class="nm2">${Presup.esc(x.g.nombre)}
+                <span class="badge ambar">${Calc.presPeriodicidad(x.g)}</span></span>
+              <span class="sb">${Calc.presCategoria(x.g.categoria).nombre}${x.g.diaCobro ? ' · día ' + x.g.diaCobro : ''}</span>
+            </span>
+            <span class="mto">${Fmt.money(x.v, base, 0)}</span>
+          </button>`).join('')}
+      </div>` : ''}
+
+      <div class="card">
+        <h3>Todos los meses</h3>
+        ${bloquesCat || '<div class="small">Sin gastos recurrentes.</div>'}
+      </div>
+
+      <div class="card">
+        <h3>Ingresos del mes</h3>
+        ${ingresos.length ? ingresos.map(x => `
+          <button class="part-row" onclick="Presup.abrir('ingreso','${x.i.id}')">
+            <span class="info">
+              <span class="nm2">${Presup.esc(x.i.nombre)}
+                ${x.i.tipo === 'variable' ? '<span class="badge gris">Piso</span>' : ''}</span>
+              <span class="sb">${x.i.titular}</span>
+            </span>
+            <span class="mto">${Fmt.money(x.v, base, 0)}</span>
+          </button>`).join('') : '<div class="small">Sin ingresos registrados para este mes.</div>'}
+      </div>`);
   }
 };
 
