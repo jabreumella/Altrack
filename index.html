@@ -891,6 +891,34 @@ const Fmt = {
     ent = ent.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     return ent + dec;
   }
+  ,
+  /* Marca del eje Y en graficas monetarias. La escala depende del rango, no
+     de un divisor fijo: dividir siempre entre 1,000 con cero decimales
+     convertia 100-400 en "0k" y 500-700 en "1k".
+     - Rango menor a 10,000: numero completo (200, 1,400).
+     - Hasta 1,000,000: miles con "k"; un decimal si el paso es menor a mil.
+     - Desde 1,000,000: millones con "M" y un decimal.
+     El signo va antes de la cifra para que los meses con perdida se lean bien. */
+  eje(v, ticks){
+    const lista = ticks || [];
+    const max = lista.length ? Math.max(...lista.map(t => Math.abs(t.value))) : Math.abs(v);
+    const paso = lista.length > 1 ? Math.abs(lista[1].value - lista[0].value) : 1;
+    const sg = v < 0 ? '-' : '';
+    const a = Math.abs(v);
+    if (a === 0) return '0';
+    if (max < 10000) return sg + Fmt.num(a, paso < 1 ? 1 : 0);
+    if (max < 1e6)   return sg + Fmt.num(a / 1000, paso < 1000 ? 1 : 0) + 'k';
+    return sg + Fmt.num(a / 1e6, paso < 1e6 ? 1 : 0) + 'M';
+  },
+  /* Monto corto para etiquetas sobre la grafica: US$653, RD$48.5k, -US$120. */
+  compacto(v, moneda){
+    if (v === null || v === undefined || isNaN(v)) return '';
+    const sg = v < 0 ? '-' : '';
+    const a = Math.abs(v), sim = Fmt.simbolo(moneda);
+    if (a < 10000) return sg + sim + Fmt.num(a, 0);
+    if (a < 1e6)   return sg + sim + Fmt.num(a / 1000, 1) + 'k';
+    return sg + sim + Fmt.num(a / 1e6, 2) + 'M';
+  }
 };
 
 /* ============ Miles: separador de miles en vivo dentro de los inputs ============ */
@@ -2025,6 +2053,73 @@ const MES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','
 const MES_INICIAL = ['E','F','M','A','M','J','J','A','S','O','N','D'];
 const DESTINOS = ['resumen','portafolio','renta','presupuesto'];
 
+/* ============ Etiquetas de valor sobre graficas de linea ============
+   Plugin propio (sin CDN adicional). Dibuja una pastilla con el valor sobre
+   cada punto de los datasets que traen `etiquetar: v => texto`.
+   - Con 6 puntos o menos se etiquetan todos.
+   - Con mas, solo primero, ultimo, maximo y minimo: en la pantalla del iPhone
+     doce pastillas se enciman. El resto queda en el tooltip.
+   - Los valores nulos (meses sin dato) se saltan.
+   - Positivos arriba del punto, negativos debajo. Si no cabe o choca con
+     otra pastilla, prueba el lado contrario; si choca en ambos, la omite
+     (el valor sigue en el tooltip).
+   El formateador vive en el dataset y no en options.plugins: Chart.js trata
+   toda funcion dentro de options como opcion "scriptable" y la invoca con su
+   propio contexto en vez del valor. chart.data.datasets no pasa por ese filtro. */
+const EtiquetasValor = {
+  id: 'etiquetasValor',
+  beforeDatasetsDraw(chart){ chart.$etiquetasOcupadas = []; },
+  afterDatasetsDraw(chart){
+    const ctx = chart.ctx, area = chart.chartArea;
+    chart.data.datasets.forEach((ds, di) => {
+      if (typeof ds.etiquetar !== 'function' || !chart.isDatasetVisible(di)) return;
+      const formato = ds.etiquetar;
+      const meta = chart.getDatasetMeta(di);
+      const vals = ds.data;
+      const validos = vals.map((v, i) => [v, i]).filter(x => x[0] !== null && x[0] !== undefined && !isNaN(x[0]));
+      if (!validos.length) return;
+      let idx;
+      if (validos.length <= 6) idx = validos.map(x => x[1]);
+      else {
+        const orden = validos.slice().sort((a, b) => a[0] - b[0]);
+        idx = [...new Set([validos[0][1], validos[validos.length - 1][1], orden[orden.length - 1][1], orden[0][1]])];
+      }
+      ctx.save();
+      ctx.font = '600 11px -apple-system, "SF Pro Display", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const ocupadas = chart.$etiquetasOcupadas || (chart.$etiquetasOcupadas = []);
+      const choca = r => ocupadas.some(o => r.x1 < o.x2 + 2 && r.x2 > o.x1 - 2 && r.y1 < o.y2 + 2 && r.y2 > o.y1 - 2);
+      idx.forEach(i => {
+        const pt = meta.data[i];
+        if (!pt || pt.skip) return;
+        const v = vals[i];
+        const txt = formato(v);
+        if (!txt) return;
+        const w = ctx.measureText(txt).width + 12, h = 18;
+        const cx = Math.min(Math.max(pt.x, area.left + w / 2), area.right - w / 2);
+        const rect = cy => ({ x1: cx - w / 2, x2: cx + w / 2, y1: cy - h / 2, y2: cy + h / 2 });
+        const cabe = cy => cy - h / 2 >= area.top - 16 && cy + h / 2 <= area.bottom + 4;
+        const arriba = pt.y - 15, abajo = pt.y + 15;
+        const orden = v < 0 ? [abajo, arriba] : [arriba, abajo];
+        const cy = orden.find(y => cabe(y) && !choca(rect(y)));
+        if (cy === undefined) return;
+        ocupadas.push(rect(cy));
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(13,64,41,.16)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 9);
+        else ctx.rect(cx - w / 2, cy - h / 2, w, h);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = v < 0 ? '#b3261e' : '#0d4029';
+        ctx.fillText(txt, cx, cy + 0.5);
+      });
+      ctx.restore();
+    });
+  }
+};
+
 const UI = {
   vista: 'resumen',
   filtroTitular: 'Todos',      // la app ya no discrimina por titular: se muestra todo
@@ -2641,12 +2736,26 @@ const UI = {
 
     // El bruto va en verde claro y el neto en verde bosque: en "Ambos" el area
     // entre las dos lineas es, literalmente, el costo de operar el mes.
+    // En "Ambos" solo se etiqueta el neto: dos filas de pastillas se cruzan.
+    // Interpolacion monotona: la curva no inventa picos entre meses (con la
+    // tension normal, la ocupacion podia dibujarse por encima de 100%).
     const dsNeto = { label: 'Ingreso neto', data: datos.map(d => d.neto),
       borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.06)', fill: true,
-      tension: .25, pointRadius: 3, borderWidth: 2 };
+      tension: .25, cubicInterpolationMode: 'monotone', pointRadius: 3, borderWidth: 2, etiquetar: v => Fmt.compacto(v, mon) };
     const dsBruto = { label: 'Ingreso bruto', data: datos.map(d => d.bruto),
       borderColor: '#1ec677', backgroundColor: 'rgba(30,198,119,.08)', fill: serie2 !== 'ambos',
-      tension: .25, pointRadius: 3, borderWidth: 2 };
+      tension: .25, cubicInterpolationMode: 'monotone', pointRadius: 3, borderWidth: 2, etiquetar: serie2 === 'bruto' ? v => Fmt.compacto(v, mon) : null };
+
+    // Eje Y comun a las dos graficas de renta corta: arranca en cero, pero
+    // beginAtZero solo obliga a incluir el cero; si hay un mes con neto
+    // negativo la escala baja sola. `grace` deja aire arriba para las
+    // etiquetas y conserva el cero como piso cuando no hay negativos.
+    const ejeY = (formato, extra) => Object.assign({
+      beginAtZero: true, grace: '12%', border: { display: false },
+      ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#6b7f74', callback: formato },
+      grid: { color: 'rgba(13,64,41,.06)' }
+    }, extra || {});
+    const ejeMoneda = (v, i, t) => Fmt.eje(v, t);
     const dsets = serie2 === 'bruto' ? [dsBruto]
                 : serie2 === 'ambos' ? [dsBruto, dsNeto]
                 : [dsNeto];
@@ -2654,15 +2763,17 @@ const UI = {
     UI.chart('chart-renta-neto', {
       type: 'line',
       data: { labels, datasets: dsets },
+      plugins: [EtiquetasValor],
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 14, right: 4 } },
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: serie2 === 'ambos', position: 'bottom',
             labels: { boxWidth: 10, font: { size: 10 } } },
           tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Fmt.money(c.parsed.y, mon)}` } } },
         scales: {
           x: { ticks: { maxTicksLimit: 7, font: { size: 10 } }, grid: { display: false } },
-          y: { ticks: { font: { size: 10 }, callback: v => Fmt.num(v/1000, 0) + 'k' }, grid: { color: 'rgba(13,64,41,.05)' } }
+          y: ejeY(ejeMoneda, { title: { display: true, text: Fmt.simbolo(mon), color: '#6b7f74', font: { size: 10 } } })
         }
       }
     });
@@ -2672,17 +2783,22 @@ const UI = {
       data: { labels, datasets: [{ label: esOcup ? 'Ocupacion' : 'RevPAR',
         data: datos.map(d => esOcup ? (d.ocupacion !== null ? d.ocupacion * 100 : null) : d.revpar),
         borderColor: '#1ec677', backgroundColor: 'rgba(30,198,119,.08)', fill: true,
-        tension: .25, pointRadius: 3, borderWidth: 2, spanGaps: true }] },
+        tension: .25, cubicInterpolationMode: 'monotone', pointRadius: 3, borderWidth: 2, spanGaps: true,
+        etiquetar: v => esOcup ? Fmt.num(v, 0) + '%' : Fmt.compacto(v, mon) }] },
+      plugins: [EtiquetasValor],
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 14, right: 4 } },
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false },
-          tooltip: { callbacks: { label: c => esOcup ? Fmt.num(c.parsed.y, 1) + '%' : Fmt.money(c.parsed.y, mon, 0) } } },
+          tooltip: { callbacks: { label: c => esOcup ? Fmt.num(c.parsed.y, 1) + '%' : Fmt.money(c.parsed.y, mon, 2) } } },
         scales: {
           x: { ticks: { maxTicksLimit: 7, font: { size: 10 } }, grid: { display: false } },
-          y: { beginAtZero: true, suggestedMax: esOcup ? 100 : undefined,
-               ticks: { font: { size: 10 }, callback: v => esOcup ? Fmt.num(v, 0) + '%' : Fmt.num(v/1000, 0) + 'k' },
-               grid: { color: 'rgba(13,64,41,.05)' } }
+          // Ocupacion: tope fijo en 100% (no puede pasarlo); las etiquetas
+          // cercanas al techo se dibujan debajo del punto.
+          y: esOcup
+            ? ejeY(v => Fmt.num(v, 0) + '%', { grace: 0, max: 100, ticks: { maxTicksLimit: 5, stepSize: 25, font: { size: 10 }, color: '#6b7f74', callback: v => Fmt.num(v, 0) + '%' } })
+            : ejeY(ejeMoneda, { title: { display: true, text: Fmt.simbolo(mon) + ' por noche', color: '#6b7f74', font: { size: 10 } } })
         }
       }
     });
