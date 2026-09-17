@@ -171,6 +171,8 @@ nav.tabbar button.active{color:var(--verde)}
 .badge.ambar{background:rgba(217,139,13,.14);color:var(--ambar)}
 .badge.estimado{background:rgba(13,64,41,.08);color:var(--bosque)}
 .alert{background:rgba(217,139,13,.1);border-left:3px solid var(--ambar);border-radius:10px;padding:10px 12px;font-size:13px;color:#8a5a09;margin-bottom:8px}
+.alert.tocable{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:44px;line-height:1.45}
+.alert.tocable .chev{margin-left:auto;font-size:19px;font-weight:700;opacity:.55;flex-shrink:0}
 
 /* ---- Fase 7: modo consulta (réplica de solo lectura) ---- */
 .banner-consulta{
@@ -298,6 +300,10 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .cat-row{display:flex;align-items:center;gap:9px;padding:10px 0;width:100%;text-align:left}
 .cat-row + .cat-row{border-top:1px solid rgba(13,64,41,.06)}
 .cat-row.sel{background:rgba(30,198,119,.07);border-radius:10px;padding-left:8px;padding-right:8px}
+/* Categoria sin monto: visible pero apagada. Se muestra igual porque es la
+   unica puerta hacia sus partidas; esconderla las dejaba inalcanzables. */
+.cat-row.apagada .nm{font-weight:600;color:var(--gris)}
+.cat-row.apagada .dot{opacity:.35}
 .cat-row .nm{font-size:14px;font-weight:700;min-width:0;overflow-wrap:anywhere}
 .cat-row .mt{margin-left:auto;text-align:right;white-space:nowrap;flex-shrink:0}
 .cat-row .mt .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -1989,16 +1995,28 @@ const Calc = {
   /* Reparto del gasto ANUAL por categoría, expresado también como equivalente
      mensual. Se calcula sobre el año completo, no sobre el mes en curso: si se
      tomara un solo mes, la colegiatura aparecería al 0% once veces al año. */
-  presPorCategoria(){
+  presPorCategoriaTodas(){
     const a = this.presAnio();
     const acum = {};
     a.meses.forEach(m => { for (const k in m.porCat) acum[k] = (acum[k] || 0) + m.porCat[k]; });
     const tot = a.gastoAnual;
+    const gastos = this.pres().gastos || [];
     return this.presCategorias().map(c => {
       const anual = acum[c.id] || 0;
+      const items = gastos.filter(g => g.categoria === c.id);
       return { id: c.id, nombre: c.nombre, color: c.color, anual,
-               mensual: anual / 12, pct: tot > 0 ? anual / tot : 0 };
-    }).filter(c => c.anual > 0);
+               mensual: anual / 12, pct: tot > 0 ? anual / tot : 0,
+               partidas: items.length,
+               pendientes: items.filter(g => this.presEsPendiente(g, 'gasto')).length };
+    });
+  },
+
+  /* El anillo y la leyenda solo dibujan lo que tiene monto: una porción de 0%
+     no existe. La LISTA, en cambio, muestra todas — una categoría en cero es
+     la única puerta hacia sus partidas, y filtrarla las dejaba fuera de
+     alcance. Esa mezcla de los dos usos fue el error original. */
+  presPorCategoria(){
+    return this.presPorCategoriaTodas().filter(c => c.anual > 0);
   },
 
   /* Cobertura patrimonial.
@@ -2034,10 +2052,16 @@ const Calc = {
   /* Partidas sin monto o sin meses. Se cuentan aparte para que la app pueda
      decir "esto está incompleto" en vez de presentar un total como si fuera
      definitivo. */
+  presEsPendiente(x, tipo){
+    if (!x) return false;
+    if (tipo === 'ingreso') return !!(x.porConfirmar || !Number(x.monto));
+    return !!(x.porConfirmar || !Number(x.monto) || !(x.mesesAplica || []).length);
+  },
+
   presPendientes(){
     const p = this.pres();
-    return (p.gastos || []).filter(x => x.porConfirmar || !x.monto || !(x.mesesAplica || []).length)
-      .concat((p.ingresos || []).filter(x => x.porConfirmar || !x.monto));
+    return (p.gastos || []).filter(x => this.presEsPendiente(x, 'gasto'))
+      .concat((p.ingresos || []).filter(x => this.presEsPendiente(x, 'ingreso')));
   }
 };
 </script>
@@ -2318,19 +2342,38 @@ const UI = {
         <span class="pc">${Fmt.pct(c.pct, 1)}</span>
       </button>`).join('');
 
-    const filas = cats.map(c => `
-      <button class="cat-row ${UI.presCatSel === c.id ? 'sel' : ''}" onclick="Presup.verCategoria('${c.id}')">
+    /* La lista recorre TODAS las categorías, no solo las que tienen monto.
+       Las que están en cero van al final, apagadas, pero siguen siendo
+       tocables: es el único camino hacia sus partidas por confirmar. */
+    const todas = Calc.presPorCategoriaTodas();
+    const conMonto = todas.filter(c => c.anual > 0);
+    const enCero = todas.filter(c => c.anual <= 0);
+
+    const filaCat = c => `
+      <button class="cat-row ${c.anual > 0 ? (UI.presCatSel === c.id ? 'sel' : '') : 'apagada'}"
+        onclick="Presup.verCategoria('${c.id}')">
         <span class="dot" style="background:${c.color}"></span>
-        <span class="nm">${c.nombre}</span>
+        <span class="nm">${Presup.esc(c.nombre)}</span>
         <span class="mt">
-          <span class="v">${Fmt.money(c.mensual, base, 0)}</span><br>
-          <span class="p">${Fmt.pct(c.pct, 1)} · ${Fmt.money(c.anual, base, 0)} al año</span>
+          ${c.anual > 0
+            ? `<span class="v">${Fmt.money(c.mensual, base, 0)}</span><br>
+               <span class="p">${Fmt.pct(c.pct, 1)} · ${Fmt.money(c.anual, base, 0)} al año</span>`
+            : `<span class="p">${c.partidas
+                 ? c.partidas + ' partida' + (c.partidas === 1 ? '' : 's') + ' sin monto'
+                 : 'Sin partidas'}</span>`}
         </span>
-      </button>`).join('');
+      </button>`;
+
+    const filas = conMonto.map(filaCat).join('') +
+      (enCero.length ? `<div class="tiny" style="margin:14px 0 2px;line-height:1.5">
+        En cero · tócalas para completar el monto</div>` : '') +
+      enCero.map(filaCat).join('');
 
     $('pres-mes').innerHTML = `
-      ${pend ? `<div class="alert">${pend} partida${pend > 1 ? 's' : ''} sin monto o sin meses confirmados.
-        Mientras tanto estas cifras están incompletas.</div>` : ''}
+      ${pend ? `<button class="alert tocable" onclick="Presup.verPendientes()">
+        <span>${pend} partida${pend > 1 ? 's' : ''} sin monto o sin meses confirmados.
+        Mientras tanto estas cifras están incompletas. Tócalo para completarlas.</span>
+        <span class="chev">&rsaquo;</span></button>` : ''}
 
       <div class="card hero-card">
         <h3>Gasto mensual equivalente</h3>
@@ -4002,7 +4045,7 @@ const Presup = {
   },
 
   /* ---------- Formulario ---------- */
-  abrir(tipo, id){
+  abrir(tipo, id, catPre){
     if (Modo.consulta()) return;
     const it = id ? Presup.item(tipo, id) : null;
     Presup.editandoTipo = tipo;
@@ -4022,7 +4065,7 @@ const Presup = {
         <input id="pg-nombre" value="${it ? Presup.esc(it.nombre) : ''}" placeholder="${esGasto ? 'Colegio Loyola' : 'Salario'}">
         ${esGasto ? `
         <label>Categoría</label>
-        <select id="pg-cat">${cats.map(c => `<option value="${c.id}"${sel(it ? it.categoria : 'otros', c.id)}>${c.nombre}</option>`).join('')}</select>
+        <select id="pg-cat">${cats.map(c => `<option value="${c.id}"${sel(it ? it.categoria : (catPre || 'otros'), c.id)}>${Presup.esc(c.nombre)}</option>`).join('')}</select>
         <div class="tiny" style="margin-top:4px">¿Falta una? <button style="color:var(--verde);font-weight:700;font-size:11px" onclick="Presup.abrirCategorias()">Administrar categorías</button></div>` : `
         <label>Tipo de ingreso</label>
         <select id="pg-tipo">
@@ -4303,6 +4346,46 @@ const Presup = {
     Presup.abrirCategorias();
   },
 
+  /* ---------- Hoja de partidas por confirmar ----------
+     Una partida sin monto no aparece en el reparto del gasto ni en la hoja del
+     mes, porque ambas listas se arman con los montos del mes. Sin esta hoja,
+     el ingreso variable en cero y los gastos por confirmar quedaban sin ningún
+     camino de edición dentro de la app. */
+  verPendientes(){
+    const base = Store.data.config.monedaBase;
+    const p = Store.data.presupuesto;
+    const gastos = (p.gastos || []).filter(x => Calc.presEsPendiente(x, 'gasto'));
+    const ingresos = (p.ingresos || []).filter(x => Calc.presEsPendiente(x, 'ingreso'));
+
+    const motivo = (x, tipo) => {
+      const m = [];
+      if (!Number(x.monto)) m.push('sin monto');
+      if (tipo === 'gasto' && !(x.mesesAplica || []).length) m.push('sin meses de pago');
+      if (!m.length) m.push('monto por verificar');
+      return m.join(' · ');
+    };
+
+    const fila = (x, tipo) => `
+      <button class="part-row" onclick="Presup.abrir('${tipo}','${x.id}')">
+        <span class="info">
+          <span class="nm2">${Presup.esc(x.nombre)} <span class="badge ambar">Por confirmar</span></span>
+          <span class="sb">${tipo === 'gasto' ? Presup.esc(Calc.presCategoria(x.categoria).nombre) + ' · ' : ''}${motivo(x, tipo)}</span>
+        </span>
+        <span class="mto">${Number(x.monto) ? Fmt.money(Number(x.monto), x.moneda || base, 0) : '—'}</span>
+      </button>`;
+
+    UI.abrirSheet('Partidas por confirmar', `
+      <div class="card">
+        <div class="tiny" style="line-height:1.5">Mientras estas partidas estén en cero o sin meses de
+          pago, el gasto mensual equivalente y la cobertura patrimonial salen por debajo de lo real.
+          Toca cada una para completarla.</div>
+      </div>
+      ${gastos.length ? `<div class="card"><h3>Gastos</h3>${gastos.map(x => fila(x, 'gasto')).join('')}</div>` : ''}
+      ${ingresos.length ? `<div class="card"><h3>Ingresos</h3>${ingresos.map(x => fila(x, 'ingreso')).join('')}</div>` : ''}
+      ${!gastos.length && !ingresos.length
+        ? '<div class="card"><div class="small">No queda nada por confirmar.</div></div>' : ''}`);
+  },
+
   /* ---------- Hoja de categoría ---------- */
   verCategoria(id){
     const base = Store.data.config.monedaBase;
@@ -4324,7 +4407,7 @@ const Presup = {
           : '<div class="small">Sin partidas en esta categoría.</div>'}
       </div>
       <div class="btn-row solo-editor">
-        <button class="btn sec" onclick="Presup.abrir('gasto', null)">Agregar un gasto</button>
+        <button class="btn sec" onclick="Presup.abrir('gasto', null, '${id}')">Agregar un gasto</button>
       </div>`);
   },
 
