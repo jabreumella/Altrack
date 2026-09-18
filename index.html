@@ -321,30 +321,41 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .part-row .mto{text-align:right;white-space:nowrap;font-weight:700;font-size:14px;
   flex-shrink:0;font-variant-numeric:tabular-nums}
 /* Barras del ano. La altura sale del gasto; la linea punteada es el ingreso. */
-/* El margen superior deja aire para las pastillas de valor: sin el, la del
-   mes mas alto se dibujaria encima del titulo de la tarjeta. */
-.barras{display:flex;align-items:flex-end;gap:4px;height:94px;margin-top:26px;position:relative}
+/* La barra es mas alta que ancha: la etiqueta cabe DENTRO, en vertical. Con
+   la pastilla horizontal encima, cuatro meses pico en columnas de ~28px se
+   encimaban entre si y sobre la etiqueta del promedio. Metida en la barra, el
+   valor no puede chocar con nada: cada uno vive en su propia columna. */
+.barras{display:flex;align-items:flex-end;gap:4px;height:118px;margin-top:20px;position:relative}
 .barras .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
   height:100%;min-width:0;padding:0;background:none}
 .barras .bar{width:100%;background:var(--verde);border-radius:3px 3px 0 0;min-height:2px;
   display:block;position:relative}
 .barras .bar.def{background:var(--ambar)}
-/* Meses pico del ano: barra en bosque. El deficit sigue senalado, pero en la
-   pastilla y en la lista de abajo, para que las dos lecturas convivan en vez
-   de taparse una a la otra. */
+/* Meses pico del ano: barra en bosque. El deficit no compite por el color de
+   la barra — se senala con la inicial del mes en ambar, abajo — o el mes mas
+   caro, que suele ser deficitario, nunca se distinguiria. */
 .barras .bar.alto{background:var(--bosque)}
 .barras .col.sel .bar{outline:2px solid var(--bosque);outline-offset:1px}
-.barras .val{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;
-  background:var(--blanco);border:1px solid rgba(13,64,41,.16);border-radius:9px;padding:1px 6px;
-  font-size:9px;font-weight:700;color:var(--bosque);white-space:nowrap;line-height:1.6;
-  font-variant-numeric:tabular-nums;pointer-events:none}
-.barras .val.def{color:var(--ambar);border-color:rgba(217,139,13,.35)}
+/* Etiqueta de valor, siempre vertical: dentro de la barra si cabe, y si no,
+   en el aire que queda encima. Vertical en los dos casos, de modo que el
+   ancho ocupado es el de una columna y dos meses vecinos no pueden chocar. */
+.barras .val{position:absolute;left:50%;margin-left:-7px;width:14px;bottom:7px;
+  writing-mode:vertical-rl;transform:rotate(180deg);text-align:left;
+  font-size:10px;font-weight:700;color:var(--blanco);white-space:nowrap;
+  font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.2px}
+/* Barra clara (mes no pico seleccionado): el texto blanco no contrastaria. */
+.barras .bar:not(.alto) .val{color:var(--bosque)}
+.barras .val.fuera{bottom:100%;margin-bottom:5px;color:var(--bosque)}
 .linea-ing{position:absolute;left:0;right:0;border-top:1px dashed var(--verde);pointer-events:none}
-.linea-ing span{position:absolute;right:0;top:-13px;font-size:9px;color:var(--verde);font-weight:700}
+/* Fondo blanco en las dos etiquetas de linea: se dibujan sobre las barras y
+   sin el se leian a medias. */
+.linea-ing span{position:absolute;right:0;top:-14px;font-size:9px;color:var(--verde);font-weight:700;
+  background:rgba(255,255,255,.9);border-radius:7px;padding:1px 5px}
 /* Promedio del gasto: misma intermitencia, color distinto y etiqueta a la
    izquierda para que nunca pise a la del ingreso. */
 .linea-prom{position:absolute;left:0;right:0;border-top:1px dashed var(--bosque);opacity:.5;pointer-events:none}
-.linea-prom span{position:absolute;left:0;top:-13px;font-size:9px;color:var(--bosque);font-weight:700;opacity:.85}
+.linea-prom span{position:absolute;left:0;top:-14px;font-size:9px;color:var(--bosque);font-weight:700;
+  background:rgba(255,255,255,.9);border-radius:7px;padding:1px 5px}
 /* Editor de categorias */
 .swatches{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .swatches button{width:36px;height:36px;border-radius:10px;border:2px solid transparent}
@@ -355,6 +366,10 @@ input[type=color]{width:100%;height:46px;padding:4px;border-radius:12px;backgrou
 .meses-lbl{display:flex;gap:4px;margin-top:5px}
 .meses-lbl span{flex:1;text-align:center;font-size:9px;color:var(--gris);min-width:0}
 .meses-lbl span.sel{color:var(--bosque);font-weight:700}
+/* Deficit: la inicial del mes en ambar. Es la senal que antes vivia en el
+   color de la barra, movida a un sitio donde no compite con el mes pico. */
+.meses-lbl span.def{color:var(--ambar);font-weight:700}
+.meses-lbl span.def.sel{text-decoration:underline}
 /* Selector de meses: doce casillas. El arreglo es la verdad; la periodicidad
    de arriba es solo un atajo que las enciende. */
 /* Montos distintos por mes: una casilla por cada mes encendido arriba. El
@@ -2555,7 +2570,10 @@ const UI = {
   renderPresAnio(){
     const base = Store.data.config.monedaBase;
     const a = Calc.presAnio();
-    const H = 94;
+    // Alto en px de la barra más alta. Debe coincidir con la altura de .barras
+    // en el CSS: la barra pico ocupa el contenedor completo, y el texto
+    // vertical de la etiqueta vive dentro de ella.
+    const H = 118;
     const max = Math.max.apply(null, a.meses.map(m => m.gasto).concat([a.ingresoEquivalente, 1]));
     const yIng = Math.min(H, Math.round(a.ingresoEquivalente / max * H));
     // Promedio = gasto mensual equivalente (total del año entre doce). Es la
@@ -2572,20 +2590,46 @@ const UI = {
     const esAlto = m => maxGasto > 0 && m.gasto >= maxGasto * 0.9;
     const hayAltos = a.meses.some(esAlto) && a.meses.filter(esAlto).length < 12;
 
+    // Sin el símbolo de moneda: ya está en el título de la tarjeta y aquí cada
+    // carácter cuesta altura. La medida se calcula UNA vez, con la etiqueta más
+    // larga, para que todas las marcas del gráfico queden a la misma altura: si
+    // el umbral se evaluara etiqueta por etiqueta, dos meses de barra casi igual
+    // podían terminar uno dentro y otro encima.
+    const texto = m => Fmt.compacto(m.gasto, base).replace(Fmt.simbolo(base), '');
+    const marcado = m => (hayAltos && esAlto(m) || UI.presMesSel === m.mes) && m.gasto > 0;
+    const necesita = Math.max.apply(null,
+      a.meses.filter(marcado).map(m => texto(m).length * 6 + 12).concat([0]));
+    // Dentro o encima, pero lo mismo para todas: dos barras casi iguales con la
+    // etiqueta en sitios distintos se leen como si midieran cosas distintas.
+    const altos = a.meses.filter(marcado).map(m => Math.max(2, Math.round(m.gasto / max * H)));
+    const cabenDentro = altos.length > 0 && altos.every(h => h >= necesita);
+    const cabenEncima = altos.length > 0 && altos.every(h => H - h >= necesita);
+    const dentro = h => cabenDentro ? true : (cabenEncima ? false : h >= necesita);
+
     const barras = a.meses.map(m => {
       const h = Math.max(2, Math.round(m.gasto / max * H));
       const alto = hayAltos && esAlto(m);
-      // Solo se etiquetan los meses pico y el mes seleccionado: doce pastillas
-      // de 9px en el ancho del iPhone se enciman y no se lee ninguna.
-      const pastilla = (alto || UI.presMesSel === m.mes) && m.gasto > 0
-        ? `<span class="val${m.saldo < 0 ? ' def' : ''}">${Fmt.compacto(m.gasto, base)}</span>` : '';
+      // Se etiquetan los meses pico y el seleccionado, y el texto va DENTRO de
+      // la barra, en vertical: así cada valor ocupa su propia columna y no
+      // puede encimarse con el del mes vecino ni con la etiqueta del promedio.
+      // Si la barra queda muy baja para el texto vertical, cae a la pastilla
+      // horizontal de siempre; solo ocurre en un mes seleccionado muy bajo,
+      // así que nunca hay dos de esas a la vez.
+      const pastilla = marcado(m)
+        ? `<span class="val${dentro(h) ? '' : ' fuera'}">${texto(m)}</span>` : '';
       return `<button class="col${UI.presMesSel === m.mes ? ' sel' : ''}" onclick="Presup.verMes(${m.mes})"
-        aria-label="${MES_LARGO[m.mes - 1]}: ${Fmt.money(m.gasto, base, 0)}">
-        <span class="bar${alto ? ' alto' : ''}${m.saldo < 0 ? ' def' : ''}" style="height:${h}px">${pastilla}</span></button>`;
+        aria-label="${MES_LARGO[m.mes - 1]}: ${Fmt.money(m.gasto, base, 0)}${m.saldo < 0 ? ' — mes en déficit' : ''}">
+        <span class="bar${alto ? ' alto' : ''}${!alto && m.saldo < 0 ? ' def' : ''}" style="height:${h}px">${pastilla}</span></button>`;
     }).join('');
 
-    const etiquetas = MES_INICIAL.map((x, i) =>
-      `<span class="${UI.presMesSel === i + 1 ? 'sel' : ''}">${x}</span>`).join('');
+    // La inicial del mes lleva la marca de déficit: el color de la barra ya
+    // está ocupado por el mes pico, y los dos meses suelen ser el mismo.
+    const etiquetas = MES_INICIAL.map((x, i) => {
+      const cl = [];
+      if (a.meses[i].saldo < 0) cl.push('def');
+      if (UI.presMesSel === i + 1) cl.push('sel');
+      return `<span class="${cl.join(' ')}">${x}</span>`;
+    }).join('');
 
     const filas = a.meses.map(m => `
       <button class="part-row" onclick="Presup.verMes(${m.mes})">
@@ -2614,17 +2658,17 @@ const UI = {
       ${alerta}
 
       <div class="card">
-        <h3>Gasto mes a mes</h3>
+        <h3>Gasto mes a mes <span class="tiny" style="text-transform:none;letter-spacing:0">· en ${Fmt.simbolo(base)}</span></h3>
         <div class="barras">
           <div class="linea-ing" style="bottom:${yIng}px"><span>ingreso ${Fmt.money(a.ingresoEquivalente, base, 0)}</span></div>
           <div class="linea-prom" style="bottom:${yProm}px"><span>promedio ${Fmt.money(a.gastoEquivalente, base, 0)}</span></div>
           ${barras}
         </div>
         <div class="meses-lbl">${etiquetas}</div>
-        <div class="tiny" style="margin-top:10px;line-height:1.5">Toca un mes para ver de qué está compuesto.
-          En bosque, los meses más caros del año (el pico y los que llegan al 90% de él), con su
-          valor en la pastilla; la pastilla en ámbar marca los meses donde el gasto supera al ingreso.
-          La línea verde es el ingreso; la oscura, el promedio de gasto mensual.</div>
+        <div class="tiny" style="margin-top:12px;line-height:1.5">Toca un mes para ver de qué está compuesto.
+          En bosque, los meses más caros del año (el pico y los que llegan al 90% de él), con el
+          monto escrito dentro de la barra. La inicial en ámbar marca los meses donde el gasto
+          supera al ingreso. La línea verde es el ingreso; la oscura, el promedio de gasto mensual.</div>
       </div>
 
       <div class="card">
