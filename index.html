@@ -145,6 +145,11 @@ nav.tabbar button.active{color:var(--verde)}
 .hero{font-size:clamp(22px,7.6vw,30px);font-weight:700;line-height:1.15;color:var(--bosque);white-space:nowrap}
 .hero.larga{font-size:clamp(19px,6.4vw,26px)}
 .hero .cur{font-size:.5em;opacity:.55;font-weight:600;margin-right:2px}
+/* Variante de acento: se usa cuando la cifra héroe no es un monto sino un
+   indicador (la cobertura patrimonial), para que no compita visualmente con
+   los patrimonios en bosque. */
+.hero.acento{color:var(--verde)}
+.hero.acento.bajo{color:var(--bosque)}
 .hero-note{font-size:12px;color:var(--gris);margin-top:6px}
 /* Variación del mes al estilo píldora: monto + chip verde con flecha */
 .delta-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:15px;font-weight:600}
@@ -316,12 +321,24 @@ fieldset{border:none;background:var(--blanco);border-radius:var(--radio);box-sha
 .part-row .mto{text-align:right;white-space:nowrap;font-weight:700;font-size:14px;
   flex-shrink:0;font-variant-numeric:tabular-nums}
 /* Barras del ano. La altura sale del gasto; la linea punteada es el ingreso. */
-.barras{display:flex;align-items:flex-end;gap:4px;height:94px;margin-top:10px;position:relative}
+/* El margen superior deja aire para las pastillas de valor: sin el, la del
+   mes mas alto se dibujaria encima del titulo de la tarjeta. */
+.barras{display:flex;align-items:flex-end;gap:4px;height:94px;margin-top:26px;position:relative}
 .barras .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
   height:100%;min-width:0;padding:0;background:none}
-.barras .bar{width:100%;background:var(--verde);border-radius:3px 3px 0 0;min-height:2px;display:block}
+.barras .bar{width:100%;background:var(--verde);border-radius:3px 3px 0 0;min-height:2px;
+  display:block;position:relative}
 .barras .bar.def{background:var(--ambar)}
+/* Meses pico del ano: barra en bosque. El deficit sigue senalado, pero en la
+   pastilla y en la lista de abajo, para que las dos lecturas convivan en vez
+   de taparse una a la otra. */
+.barras .bar.alto{background:var(--bosque)}
 .barras .col.sel .bar{outline:2px solid var(--bosque);outline-offset:1px}
+.barras .val{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;
+  background:var(--blanco);border:1px solid rgba(13,64,41,.16);border-radius:9px;padding:1px 6px;
+  font-size:9px;font-weight:700;color:var(--bosque);white-space:nowrap;line-height:1.6;
+  font-variant-numeric:tabular-nums;pointer-events:none}
+.barras .val.def{color:var(--ambar);border-color:rgba(217,139,13,.35)}
 .linea-ing{position:absolute;left:0;right:0;border-top:1px dashed var(--verde);pointer-events:none}
 .linea-ing span{position:absolute;right:0;top:-13px;font-size:9px;color:var(--verde);font-weight:700}
 /* Promedio del gasto: misma intermitencia, color distinto y etiqueta a la
@@ -340,6 +357,12 @@ input[type=color]{width:100%;height:46px;padding:4px;border-radius:12px;backgrou
 .meses-lbl span.sel{color:var(--bosque);font-weight:700}
 /* Selector de meses: doce casillas. El arreglo es la verdad; la periodicidad
    de arriba es solo un atajo que las enciende. */
+/* Montos distintos por mes: una casilla por cada mes encendido arriba. El
+   placeholder es el monto base, asi que dejar una en blanco no es un hueco:
+   es "esta cuota vale lo mismo que las demas". */
+.montosgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.montosgrid > div{min-width:0}
+.montosgrid label{margin:0 0 4px;font-size:12px}
 .mesgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
 .mesgrid button{min-height:42px;border-radius:10px;background:var(--menta);
   color:var(--gris);font-size:12px;font-weight:700}
@@ -1947,12 +1970,48 @@ const Calc = {
     return this.aBase(m, item.moneda || 'DOP');
   },
 
+  /* Total del año de una partida, en moneda base. Es la cifra que decide si
+     una partida está completa o pendiente: con montos distintos por mes, el
+     monto base puede quedar en cero legítimamente, y mirar solo `monto`
+     marcaba como "por confirmar" algo que ya estaba capturado. */
+  presTotalAnual(item){
+    let s = 0;
+    for (let m = 1; m <= 12; m++) s += this.presMontoMes(item, m);
+    return s;
+  },
+
+  /* ¿La partida tiene al menos un mes con monto propio? Se usa para rotular
+     la fila: "2 pagos al año" sin más haría creer que son dos cuotas iguales. */
+  presTieneVariables(item){
+    const mp = item && item.montoPorMes;
+    if (!mp) return false;
+    return (item.mesesAplica || []).some(m => {
+      const v = mp[String(m)];
+      return v !== null && v !== undefined && v !== '' && !isNaN(v);
+    });
+  },
+
+  /* Sufijo para la fila de la partida. Va aparte de presPeriodicidad porque
+     esa etiqueta también se usa dentro de una pastilla estrecha. */
+  presEtiquetaMontos(item){
+    return this.presTieneVariables(item) ? ' · montos variables' : '';
+  },
+
   /* Etiqueta legible de la periodicidad, derivada del arreglo de meses. */
   presPeriodicidad(item){
-    const n = (item.mesesAplica || []).length;
-    const mapa = { 12: 'Mensual', 6: 'Bimestral', 4: 'Trimestral', 3: 'Cuatrimestral', 2: 'Semestral', 1: 'Anual' };
+    const meses = (item.mesesAplica || []).slice().sort((a, b) => a - b);
+    const n = meses.length;
     if (n === 0) return 'Sin meses';
-    return mapa[n] || (n + ' pagos al año');
+    if (n === 12) return 'Mensual';
+    const mapa = { 6: 'Bimestral', 4: 'Trimestral', 3: 'Cuatrimestral', 2: 'Semestral', 1: 'Anual' };
+    // La etiqueta de periodicidad solo vale si los pagos están repartidos
+    // parejo. Febrero y marzo son dos pagos al año, no un semestral, y
+    // llamarlos semestrales haría creer que el segundo cae en agosto.
+    const paso = 12 / n;
+    const parejo = Number.isInteger(paso) &&
+      meses.every((m, i) => m === ((meses[0] - 1 + i * paso) % 12) + 1);
+    if (parejo && mapa[n]) return mapa[n];
+    return n + (n === 1 ? ' pago al año' : ' pagos al año');
   },
 
   /* Los doce meses del año con ingreso, gasto, saldo y saldo acumulado.
@@ -2053,9 +2112,10 @@ const Calc = {
      decir "esto está incompleto" en vez de presentar un total como si fuera
      definitivo. */
   presEsPendiente(x, tipo){
-    if (!x) return false;
-    if (tipo === 'ingreso') return !!(x.porConfirmar || !Number(x.monto));
-    return !!(x.porConfirmar || !Number(x.monto) || !(x.mesesAplica || []).length);
+    if (!x || x.activo === false) return false;
+    const total = this.presTotalAnual(x);
+    if (tipo === 'ingreso') return !!(x.porConfirmar || !total);
+    return !!(x.porConfirmar || !total || !(x.mesesAplica || []).length);
   },
 
   presPendientes(){
@@ -2103,7 +2163,14 @@ const EtiquetasValor = {
       const validos = vals.map((v, i) => [v, i]).filter(x => x[0] !== null && x[0] !== undefined && !isNaN(x[0]));
       if (!validos.length) return;
       let idx;
-      if (validos.length <= 6) idx = validos.map(x => x[1]);
+      // `etiquetarIdx: 'extremos'` deja solo el primero y el ultimo punto con
+      // dato. En una curva de 40 puntos, marcar tambien maximo y minimo
+      // apilaba cuatro pastillas casi encima del mismo tramo.
+      if (ds.etiquetarIdx === 'extremos') {
+        idx = [...new Set([validos[0][1], validos[validos.length - 1][1]])];
+      } else if (ds.etiquetarIdx === 'final') {
+        idx = [validos[validos.length - 1][1]];
+      } else if (validos.length <= 6) idx = validos.map(x => x[1]);
       else {
         const orden = validos.slice().sort((a, b) => a[0] - b[0]);
         idx = [...new Set([validos[0][1], validos[validos.length - 1][1], orden[orden.length - 1][1], orden[0][1]])];
@@ -2411,13 +2478,16 @@ const UI = {
       </div>
 
       ${cob.gasto > 0 ? `
-      <div class="card">
+      <div class="card hero-card">
         <h3>Cobertura patrimonial</h3>
+        <div class="hero acento${cob.ratio !== null && cob.ratio < 1 ? ' bajo' : ''}">${Fmt.pct(cob.ratio, 1)}</div>
+        <div class="hero-note">Del gasto mensual equivalente ya lo paga el patrimonio.
+          Ingreso pasivo ${Fmt.money(cob.pasivo, base)} sobre ${Fmt.money(cob.gasto, base)} de gasto.</div>
+        <div style="margin-top:14px;border-top:1px solid rgba(13,64,41,.07);padding-top:10px">
         <div class="kv"><span class="k">Rentas netas de inmuebles <span class="tiny">(renta larga, prorrateo mensual)</span></span><span class="v">${Fmt.money(cob.rentas, base)}</span></div>
         <div class="kv"><span class="k">Rendimiento financiero del mes <span class="tiny">(neto de retención)</span></span><span class="v">${Fmt.money(cob.intereses, base)}</span></div>
         <div class="kv"><span class="k"><b>Ingreso pasivo mensual</b></span><span class="v">${Fmt.money(cob.pasivo, base)}</span></div>
         <div class="kv"><span class="k">Gasto mensual equivalente</span><span class="v">${Fmt.money(cob.gasto, base)}</span></div>
-        <div class="kv"><span class="k"><b>Cobertura</b></span><span class="v" style="color:var(--verde)">${Fmt.pct(cob.ratio, 1)}</span></div>
         ${cob.devengado >= 0.005 ? `
         <div class="kv"><span class="k">De la cobertura, lo que entra al banco <span class="tiny">(rentas + certificados de pago mensual)</span></span><span class="v">${Fmt.pct(cob.ratioCaja, 1)}</span></div>` : ''}
         ${cob.rentaCorta && cob.rentaCorta.hay ? `
@@ -2427,6 +2497,7 @@ const UI = {
           El rendimiento del mes es devengo: incluye el interés de los capitalizables
           y de los de pago al vencimiento, que es tuyo pero no entra al banco este mes.
           El denominador es el equivalente, con lo semestral y lo anual adentro.
+        </div>
         </div>
       </div>` : ''}
 
@@ -2491,11 +2562,26 @@ const UI = {
     // misma cifra que encabeza la vista Mes: así las dos pantallas no discuten.
     const yProm = Math.min(H, Math.round(a.gastoEquivalente / max * H));
 
+    // Meses pico: el más caro del año y cualquiera que llegue al 90% de él.
+    // El umbral es relativo y no absoluto a propósito — lo que interesa es
+    // "cuáles son los meses grandes de ESTE presupuesto", no superar una cifra
+    // fija que dejaría de tener sentido al cambiar los montos.
+    // El déficit no compite por el color de la barra: si lo hiciera, marzo
+    // sería ámbar y el mes pico nunca se vería. Se señala en la pastilla.
+    const maxGasto = Math.max.apply(null, a.meses.map(m => m.gasto).concat([0]));
+    const esAlto = m => maxGasto > 0 && m.gasto >= maxGasto * 0.9;
+    const hayAltos = a.meses.some(esAlto) && a.meses.filter(esAlto).length < 12;
+
     const barras = a.meses.map(m => {
       const h = Math.max(2, Math.round(m.gasto / max * H));
+      const alto = hayAltos && esAlto(m);
+      // Solo se etiquetan los meses pico y el mes seleccionado: doce pastillas
+      // de 9px en el ancho del iPhone se enciman y no se lee ninguna.
+      const pastilla = (alto || UI.presMesSel === m.mes) && m.gasto > 0
+        ? `<span class="val${m.saldo < 0 ? ' def' : ''}">${Fmt.compacto(m.gasto, base)}</span>` : '';
       return `<button class="col${UI.presMesSel === m.mes ? ' sel' : ''}" onclick="Presup.verMes(${m.mes})"
         aria-label="${MES_LARGO[m.mes - 1]}: ${Fmt.money(m.gasto, base, 0)}">
-        <span class="bar${m.saldo < 0 ? ' def' : ''}" style="height:${h}px"></span></button>`;
+        <span class="bar${alto ? ' alto' : ''}${m.saldo < 0 ? ' def' : ''}" style="height:${h}px">${pastilla}</span></button>`;
     }).join('');
 
     const etiquetas = MES_INICIAL.map((x, i) =>
@@ -2536,8 +2622,9 @@ const UI = {
         </div>
         <div class="meses-lbl">${etiquetas}</div>
         <div class="tiny" style="margin-top:10px;line-height:1.5">Toca un mes para ver de qué está compuesto.
-          En ámbar, los meses donde el gasto supera al ingreso. La línea verde es el ingreso;
-          la oscura, el promedio de gasto mensual.</div>
+          En bosque, los meses más caros del año (el pico y los que llegan al 90% de él), con su
+          valor en la pastilla; la pastilla en ámbar marca los meses donde el gasto supera al ingreso.
+          La línea verde es el ingreso; la oscura, el promedio de gasto mensual.</div>
       </div>
 
       <div class="card">
@@ -2924,21 +3011,30 @@ const UI = {
       if (s) snapPts[idx] = UI.claseGrafico === 'consolidado' ? s.valorBase : null;
       idx++; f = Fecha.iso(new Date(Fecha.parse(f).getTime() + paso*86400000));
     }
+    // Pastillas de valor, como en las graficas de renta: el punto de partida
+    // del rango, el valor de hoy (ultimo punto del historico) y el valor al
+    // final de la proyeccion. Tres cifras, que son las que se leen; el resto
+    // del recorrido sigue en el tooltip.
+    const mb = Store.data.config.monedaBase;
     UI.chart('chart-linea', {
       type: 'line',
       data: { labels, datasets: [
-        { label: 'Histórico', data: histor, borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.05)', fill: true, tension: .3, pointRadius: 0, borderWidth: 2 },
-        { label: 'Proyección', data: proyec, borderColor: '#1ec677', borderDash: [6,5], tension: .3, pointRadius: 0, borderWidth: 2 },
+        { label: 'Histórico', data: histor, borderColor: '#0d4029', backgroundColor: 'rgba(13,64,41,.05)', fill: true, tension: .3, pointRadius: 0, borderWidth: 2,
+          etiquetarIdx: 'extremos', etiquetar: v => Fmt.compacto(v, mb) },
+        { label: 'Proyección', data: proyec, borderColor: '#1ec677', borderDash: [6,5], tension: .3, pointRadius: 0, borderWidth: 2,
+          etiquetarIdx: 'final', etiquetar: v => Fmt.compacto(v, mb) },
         { label: 'Snapshots', data: snapPts, borderColor: '#1ec677', backgroundColor: '#1ec677', pointRadius: 3, showLine: false }
       ]},
+      plugins: [EtiquetasValor],
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 14, right: 4 } },
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
           tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Fmt.money(c.parsed.y, Store.data.config.monedaBase)}` } } },
         scales: {
           x: { ticks: { maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
-          y: { ticks: { font: { size: 10 }, callback: v => Fmt.num(v/1000,0) + 'k' }, grid: { color: 'rgba(13,64,41,.05)' } }
+          y: { grace: '8%', ticks: { font: { size: 10 }, callback: v => Fmt.num(v/1000,0) + 'k' }, grid: { color: 'rgba(13,64,41,.05)' } }
         }
       }
     });
@@ -4025,6 +4121,8 @@ const RentaCorta = {
    cambiar un monto rompe el hilo. */
 const Presup = {
   meses: [],          // meses encendidos mientras se edita
+  montos: {},         // { mes: texto } montos propios mientras se edita
+  variable: false,    // interruptor "montos distintos por mes"
   editandoId: null,
   editandoTipo: null,
 
@@ -4051,6 +4149,16 @@ const Presup = {
     Presup.editandoTipo = tipo;
     Presup.editandoId = id || null;
     Presup.meses = it ? (it.mesesAplica || []).slice() : [1,2,3,4,5,6,7,8,9,10,11,12];
+    // Los montos por mes se editan como texto (con comas, igual que el resto
+    // de los campos monetarios) y solo se convierten a número al guardar.
+    Presup.montos = {};
+    if (it && it.montoPorMes) {
+      for (const k in it.montoPorMes) {
+        const v = it.montoPorMes[k];
+        if (v !== null && v !== undefined && v !== '' && !isNaN(v)) Presup.montos[Number(k)] = Fmt.agrupar(String(v));
+      }
+    }
+    Presup.variable = it ? Calc.presTieneVariables(it) : false;
 
     const cats = Calc.presCategorias();
     const titulares = Store.data.titulares || ['Juan José','Massi','Conjunto'];
@@ -4101,6 +4209,11 @@ const Presup = {
           <button onclick="Presup.atajo(0)">Ninguno</button>
         </div>
         <div class="mesgrid" id="pg-meses"></div>
+        <div class="switch-row" style="margin-top:12px">
+          <span>Montos distintos por mes<br><span class="tiny">Inscripción en febrero y colegiatura en marzo, por ejemplo</span></span>
+          <label class="switch"><input type="checkbox" id="pg-var" ${Presup.variable ? 'checked' : ''} onchange="Presup.toggleVariable()"><span class="tr"></span><span class="th"></span></label>
+        </div>
+        <div id="pg-montos"></div>
       </fieldset>
 
       ${esGasto ? `
@@ -4129,6 +4242,11 @@ const Presup = {
     Miles.activar($('sheet-body'));
     if (it) Miles.set('pg-monto', it.monto);
     if (it && it.diaCobro && $('pg-dia')) $('pg-dia').value = it.diaCobro;
+    Presup.pintarMontos();
+    // El placeholder de cada mes es el monto base: si cambia, hay que
+    // repintarlo o las casillas seguirían prometiendo un valor viejo.
+    const inpBase = $('pg-monto');
+    if (inpBase) inpBase.addEventListener('blur', () => { Presup.leerMontos(); Presup.pintarMontos(); });
   },
 
   esc(t){
@@ -4146,24 +4264,70 @@ const Presup = {
     }).join('');
   },
 
+  /* ---------- Montos distintos por mes ----------
+     El monto base sigue siendo la regla; estas casillas son la excepción. Un
+     mes en blanco NO es cero: es "esta cuota vale lo mismo que las demás".
+     Por eso el placeholder muestra el monto base y no un cero. */
+  pintarMontos(){
+    const box = $('pg-montos');
+    if (!box) return;
+    if (!Presup.variable) { box.innerHTML = ''; return; }
+    const inpBase = $('pg-monto');
+    const base = inpBase ? Fmt.parse(inpBase.value) : NaN;
+    const ph = (isNaN(base) || !base) ? '0' : Fmt.agrupar(String(base));
+    box.innerHTML = `
+      <div class="tiny" style="line-height:1.5;margin-top:12px">Escribe solo los meses que valen distinto.
+        El que dejes en blanco toma el monto de arriba (${ph}).</div>
+      <div class="montosgrid">
+        ${Presup.meses.map(m => `
+          <div>
+            <label>${MES_LARGO[m - 1]}</label>
+            <input id="pg-m-${m}" inputmode="decimal" data-miles placeholder="${ph}"
+              value="${Presup.montos[m] != null ? Presup.esc(Presup.montos[m]) : ''}">
+          </div>`).join('')}
+      </div>`;
+    Miles.activar(box);
+  },
+
+  /* Antes de repintar hay que rescatar lo escrito, o encender un mes borraría
+     los montos que el usuario tenía a medio capturar. */
+  leerMontos(){
+    if (!$('pg-montos')) return;
+    Presup.meses.forEach(m => {
+      const inp = $('pg-m-' + m);
+      if (inp) Presup.montos[m] = inp.value.trim();
+    });
+  },
+
+  toggleVariable(){
+    Presup.leerMontos();
+    const chk = $('pg-var');
+    Presup.variable = !!(chk && chk.checked);
+    Presup.pintarMontos();
+  },
+
   toggleMes(m){
+    Presup.leerMontos();
     const i = Presup.meses.indexOf(m);
     if (i === -1) Presup.meses.push(m); else Presup.meses.splice(i, 1);
     Presup.meses.sort((a, b) => a - b);
     Presup.pintarMeses();
+    Presup.pintarMontos();
   },
 
   /* El atajo respeta el primer mes ya encendido: un trimestral que arranca en
      febrero cae en 2-5-8-11, no en 1-4-7-10. Esa era justamente la diferencia
      que una etiqueta de periodicidad sola no puede representar. */
   atajo(n){
-    if (n === 0) { Presup.meses = []; return Presup.pintarMeses(); }
+    Presup.leerMontos();
+    if (n === 0) { Presup.meses = []; Presup.pintarMeses(); return Presup.pintarMontos(); }
     const inicio = Presup.meses.length ? Presup.meses[0] : 1;
     const paso = 12 / n;
     const out = [];
     for (let k = 0; k < n; k++) out.push(((inicio - 1 + k * paso) % 12) + 1);
     Presup.meses = out.sort((a, b) => a - b);
     Presup.pintarMeses();
+    Presup.pintarMontos();
   },
 
   guardar(){
@@ -4173,10 +4337,27 @@ const Presup = {
     err.classList.remove('show');
 
     const nombre = ($('pg-nombre').value || '').trim();
-    const monto = Fmt.parse($('pg-monto').value);
+    // Un campo vacío vale cero: con montos distintos por mes el monto base
+    // puede quedar en blanco legítimamente y no es un error de captura.
+    const crudo = ($('pg-monto').value || '').trim();
+    const monto = crudo === '' ? 0 : Fmt.parse($('pg-monto').value);
     if (!nombre) return fallo('Ponle un nombre a la partida.');
     if (isNaN(monto) || monto < 0) return fallo('El monto no puede ser negativo. Si todavía no lo sabes, deja 0 y la app lo marcará como pendiente.');
     if (!Presup.meses.length) return fallo('Enciende al menos un mes de pago.');
+
+    // Montos por mes: solo se guardan los meses encendidos y con valor. Un mes
+    // en blanco cae al monto base, así que no se persiste nada para él.
+    Presup.leerMontos();
+    const mapaMontos = {};
+    if (Presup.variable) {
+      for (const m of Presup.meses) {
+        const txt = Presup.montos[m];
+        if (txt === undefined || txt === null || String(txt).trim() === '') continue;
+        const v = Fmt.parse(txt);
+        if (isNaN(v) || v < 0) return fallo(`El monto de ${MES_LARGO[m - 1]} no es válido.`);
+        mapaMontos[String(m)] = v;
+      }
+    }
 
     const p = Store.data.presupuesto;
     const lista = esGasto ? p.gastos : p.ingresos;
@@ -4190,10 +4371,13 @@ const Presup = {
     it.moneda = $('pg-moneda').value;
     it.titular = $('pg-titular').value;
     it.mesesAplica = Presup.meses.slice();
+    it.montoPorMes = mapaMontos;
     it.notas = ($('pg-notas').value || '').trim();
     // porConfirmar se apaga en cuanto tú tocas la partida: si la editaste, el
-    // dato ya es tuyo. Solo un monto en cero la deja marcada como pendiente.
-    it.porConfirmar = !(monto > 0);
+    // dato ya es tuyo. Se mide contra el TOTAL DEL AÑO y no contra el monto
+    // base: una colegiatura con montos por mes puede tener el monto base en
+    // cero y estar completa.
+    it.porConfirmar = !(Calc.presTotalAnual(it) > 0);
     if (esGasto) {
       it.categoria = $('pg-cat').value;
       const dia = Fmt.parse($('pg-dia').value);
@@ -4359,7 +4543,10 @@ const Presup = {
 
     const motivo = (x, tipo) => {
       const m = [];
-      if (!Number(x.monto)) m.push('sin monto');
+      // El criterio es el total del año, no el monto base: una partida con
+      // montos distintos por mes puede tener el monto base en cero y estar
+      // perfectamente capturada.
+      if (!Calc.presTotalAnual(x)) m.push('sin monto');
       if (tipo === 'gasto' && !(x.mesesAplica || []).length) m.push('sin meses de pago');
       if (!m.length) m.push('monto por verificar');
       return m.join(' · ');
@@ -4371,7 +4558,7 @@ const Presup = {
           <span class="nm2">${Presup.esc(x.nombre)} <span class="badge ambar">Por confirmar</span></span>
           <span class="sb">${tipo === 'gasto' ? Presup.esc(Calc.presCategoria(x.categoria).nombre) + ' · ' : ''}${motivo(x, tipo)}</span>
         </span>
-        <span class="mto">${Number(x.monto) ? Fmt.money(Number(x.monto), x.moneda || base, 0) : '—'}</span>
+        <span class="mto">${Calc.presTotalAnual(x) ? Fmt.money(Calc.presTotalAnual(x) / 12, base, 0) + '<br><span class="tiny">al mes</span>' : '—'}</span>
       </button>`;
 
     UI.abrirSheet('Partidas por confirmar', `
@@ -4412,8 +4599,14 @@ const Presup = {
   },
 
   filaPartida(g, mensual, base){
-    const per = Calc.presPeriodicidad(g);
-    const mon = g.moneda !== base ? ` · ${Fmt.money(g.monto, g.moneda)}` : '';
+    const per = Calc.presPeriodicidad(g) + Calc.presEtiquetaMontos(g);
+    // Con montos variables el "monto por pago" no representa a la partida, así
+    // que en moneda extranjera se muestra el total del año en su moneda.
+    const mon = g.moneda !== base
+      ? (Calc.presTieneVariables(g)
+          ? ` · ${Fmt.money(Calc.conv(Calc.presTotalAnual(g), base, g.moneda), g.moneda, 0)} al año`
+          : ` · ${Fmt.money(g.monto, g.moneda)}`)
+      : '';
     const dia = g.diaCobro ? ` · día ${g.diaCobro}` : '';
     return `
       <button class="part-row" onclick="Presup.abrir('gasto','${g.id}')">
