@@ -178,6 +178,10 @@ nav.tabbar button.active{color:var(--verde)}
 .alert{background:rgba(217,139,13,.1);border-left:3px solid var(--ambar);border-radius:10px;padding:10px 12px;font-size:13px;color:#8a5a09;margin-bottom:8px}
 .alert.tocable{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:44px;line-height:1.45}
 .alert.tocable .chev{margin-left:auto;font-size:19px;font-weight:700;opacity:.55;flex-shrink:0}
+.alert.cerrable{display:flex;align-items:center;gap:10px}
+.alert.cerrable .txt{min-width:0}
+.alert.cerrable button{margin-left:auto;flex-shrink:0;min-height:44px;min-width:44px;padding:0 10px;border-radius:10px;
+  background:rgba(217,139,13,.14);color:#8a5a09;font-size:13px;font-weight:700}
 
 /* ---- Fase 7: modo consulta (réplica de solo lectura) ---- */
 .banner-consulta{
@@ -515,7 +519,7 @@ input[type=color]{width:100%;height:46px;padding:4px;border-radius:12px;backgrou
       </div>
       <div class="chart-box" id="chart-box-linea"><canvas id="chart-linea"></canvas></div>
       <div class="chart-vacio" id="chart-linea-vacio" style="display:none"></div>
-      <div class="tiny" id="chart-linea-nota" style="margin-top:6px">Línea sólida: histórico (teórico + snapshots). Punteada: proyección determinística.</div>
+      <div class="tiny" id="chart-linea-nota" style="margin-top:6px">Línea sólida: histórico (teórico + snapshots). Punteada: proyección determinística, suponiendo que todo lo que vence se reinvierte en el mismo acuerdo y a la misma tasa, y que los cupones de los bonos se reinvierten a su TIR.</div>
     </div>
 
     <button class="card" style="width:100%;text-align:left" id="card-flujo">
@@ -2267,12 +2271,60 @@ const Calc = {
     };
   },
 
+  /* ---------- Proyección con reinversión ----------
+     Solo para fechas FUTURAS (curva punteada y valor proyectado a 12 meses).
+     Supuesto declarado: lo que vence se reinvierte en el mismo acuerdo, a la
+     misma tasa, y los cupones de los bonos se reinvierten a su TIR. Sin este
+     supuesto la proyección caía en cada vencimiento, como si el dinero
+     desapareciera. El valor a hoy y el histórico no usan esto: ahí manda lo
+     que realmente existe.
+     - Certificados y mutuos: hasta su fin, el motor normal. Después, el
+       valor al fin crece repitiendo el mismo plazo: factor = valor al
+       vencimiento ÷ capital por cada plazo completo, y dentro del plazo en
+       curso la misma trayectoria que tuvo el original.
+     - Bonos: rendimiento total a la TIR de compra, neto de retención, con
+       capitalización según la frecuencia del cupón. Curva suave: el cupón
+       no sale, se reinvierte. */
+  valorProyectado(inst, fechaISO){
+    const hoy = Fecha.hoy();
+    if (inst.tipo === 'bono') {
+      const v0 = this.valorInstrumento(inst, hoy);
+      const ret = this.cfg().aplicarRetencion ? this.convencion(inst).ret : 0;
+      const m = this.bonoFrecuencia(inst);
+      const y = this.bonoTir(inst) * (1 - ret);
+      return v0 * Math.pow(1 + y / m, m * Math.max(0, Fecha.dias(hoy, fechaISO)) / 365);
+    }
+    const fin = this.finVigencia(inst);
+    if (!fin || Fecha.dias(fechaISO, fin) >= 0) return this.valorInstrumento(inst, fechaISO);
+    const cap = this.capital(inst);
+    const plazo = Fecha.dias(inst.fechaInicio, inst.fechaVencimiento);
+    if (!(cap > 0) || !(plazo > 0)) return this.valorInstrumento(inst, fin);
+    const vFin = this.valorInstrumento(inst, fin);
+    const factor = this.valorInstrumento(inst, inst.fechaVencimiento) / cap;
+    const d = Fecha.dias(fin, fechaISO);
+    const k = Math.floor(d / plazo);
+    const resto = d - k * plazo;
+    const enCurso = Fecha.iso(new Date(Fecha.parse(inst.fechaInicio).getTime() + resto * 86400000));
+    const ratio = this.valorInstrumento(inst, enCurso) / cap;
+    return vFin * Math.pow(factor, k) * ratio;
+  },
+
   /* Valor teórico del portafolio en cualquier fecha (pasada o futura). */
   valorEnFecha(fechaISO, clase){
     const cfg = this.cfg();
     let fin = 0, inm = 0;
+    const hoyV = Fecha.hoy();
+    const futuro = Fecha.dias(hoyV, fechaISO) > 0;
     for (const inst of Store.data.instrumentos) {
       if (!inst.fechaInicio || Fecha.dias(inst.fechaInicio, fechaISO) < 0) continue;
+      // Futuro: lo vigente hoy, reinvertido en el mismo acuerdo al vencer.
+      // Lo que ya no es vigente hoy no se proyecta: su dinero ya está en otro
+      // instrumento, y contarlo de nuevo sería doble.
+      if (futuro) {
+        if (!this.vigente(inst, hoyV)) continue;
+        fin += this.aBase(this.valorProyectado(inst, fechaISO), inst.moneda);
+        continue;
+      }
       // Hasta su fin de vigencia cuenta; después ya no es patrimonio. Así la
       // curva conserva los meses en que el instrumento existió.
       if (!this.vigente(inst, fechaISO)) continue;
@@ -2580,6 +2632,27 @@ const EtiquetasValor = {
   }
 };
 
+/* ============ Avisos leídos ============
+   Preferencia de pantalla, no dato del patrimonio: vive en su propia llave de
+   localStorage, fuera de patrimonio_v1. Así no toca meta.actualizadoEn, no
+   viaja en la publicación y cada iPhone (el de Lidia incluido) recuerda lo que
+   ya leyó por su cuenta. */
+const AvisosLeidos = {
+  KEY: 'al_avisos_leidos',
+  mem: [],
+  lista(){
+    try { const v = JSON.parse(localStorage.getItem(this.KEY) || '[]'); return Array.isArray(v) ? v : []; }
+    catch(e){ return this.mem; }
+  },
+  leido(k){ return this.lista().indexOf(k) >= 0; },
+  marcar(ks){
+    // Se conservan solo las 200 más recientes: es una lista que solo crece.
+    const v = this.lista().concat(ks.filter(k => k && !this.leido(k))).slice(-200);
+    this.mem = v;
+    try { localStorage.setItem(this.KEY, JSON.stringify(v)); } catch(e){}
+  }
+};
+
 const UI = {
   vista: 'resumen',
   filtroTitular: 'Todos',      // la app ya no discrimina por titular: se muestra todo
@@ -2667,6 +2740,12 @@ const UI = {
     const t = $('agregar-titulo');
     if (t) t.textContent = 'Agregar activo';
     UI.irA('agregar');
+  },
+
+  /* Marca un aviso descartable como leído y repinta el Resumen. */
+  leerAviso(claves){
+    AvisosLeidos.marcar(String(claves).split(','));
+    UI.renderResumen();
   },
 
   /* ---------- Modo consulta ---------- */
@@ -3071,12 +3150,17 @@ const UI = {
       if (d >= 0 && d <= 7) (recientes[fin] = recientes[fin] || []).push(i);
     }
     Object.keys(recientes).sort().forEach(fin => {
-      const lista = recientes[fin];
+      // Una vez leído no vuelve: se recuerda por instrumento y fecha de fin.
+      const lista = recientes[fin].filter(i => !AvisosLeidos.leido(i.id + '@' + fin));
+      if (!lista.length) return;
       const cuenta = {};
       lista.forEach(i => { cuenta[i.nombre] = (cuenta[i.nombre] || 0) + 1; });
       const nombres = Object.keys(cuenta).map(n => `<b>${n}</b>${cuenta[n] > 1 ? ' (' + cuenta[n] + ')' : ''}`).join(', ');
       const varios = lista.length > 1;
-      avisos.push(`&#10003; ${nombres} ${varios ? 'finalizaron' : 'finalizó'} el ${Fmt.fecha(fin)}: ${varios ? 'salieron' : 'salió'} del valor a hoy y su ganancia quedó como realizada. ${varios ? 'Están' : 'Está'} en Portafolio → No vigentes.`);
+      avisos.push({
+        html: `&#10003; ${nombres} ${varios ? 'finalizaron' : 'finalizó'} el ${Fmt.fecha(fin)}: ${varios ? 'salieron' : 'salió'} del valor a hoy y su ganancia quedó como realizada. ${varios ? 'Están' : 'Está'} en Portafolio → No vigentes.`,
+        claves: lista.map(i => i.id + '@' + fin)
+      });
     });
     for (const im of Store.data.inmuebles) {
       if (im.estado !== 'rentado' || !im.renta || !im.renta.fechaFinContrato) continue;
@@ -3086,7 +3170,9 @@ const UI = {
         avisos.push(`&#127968; Valor de mercado de <b>${im.nombre}</b> tiene más de 12 meses (${Fmt.fecha(im.valorMercadoFecha)}). Actualízalo.`);
     }
     // El recordatorio de respaldo vive solo en Ajustes (spec §6.5), no en el home.
-    $('avisos').innerHTML = avisos.map(a => `<div class="alert">${a}</div>`).join('');
+    $('avisos').innerHTML = avisos.map(a => typeof a === 'string'
+      ? `<div class="alert">${a}</div>`
+      : `<div class="alert cerrable"><span class="txt">${a.html}</span><button onclick="UI.leerAviso('${a.claves.join(',')}')" aria-label="Marcar como leído">Entendido</button></div>`).join('');
 
     // Héroe: portafolio de inversión (financiero). El patrimonio total con
     // inmuebles se informa en la tarjeta Portafolio y en la nota del ⓘ.
@@ -5494,7 +5580,7 @@ const Informe = {
       <div class="pdf-hero">
         <div><div class="lbl">Rendimiento fin. bruto</div><div class="val num">${Fmt.money(t.rendBruto, base)}</div></div>
         <div><div class="lbl">Rendimiento fin. neto</div><div class="val num">${Fmt.money(t.rendNeto, base)}</div><div style="font-size:9px;color:#6b7f74">Después de retención ${Fmt.pct(cfg.retencionISR,0)}</div></div>
-        <div><div class="lbl">Proyección a 12 meses</div><div class="val num">${Fmt.money(proy12, base)}</div><div style="font-size:9px;color:#6b7f74">Determinística — estimado</div></div>
+        <div><div class="lbl">Proyección a 12 meses</div><div class="val num">${Fmt.money(proy12, base)}</div><div style="font-size:9px;color:#6b7f74">Estimado: reinvierte al vencer, mismas tasas</div></div>
       </div>
       <h2>Instrumentos financieros</h2>
       <table><thead><tr><th>Nombre</th><th>Institución</th><th>Titular</th><th>Mon.</th><th class="num-r">Capital</th><th class="num-r">Valor actual</th><th class="num-r">Tasa</th><th>Vencimiento</th></tr></thead>
